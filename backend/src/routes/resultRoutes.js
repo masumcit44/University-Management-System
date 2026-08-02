@@ -3,11 +3,16 @@ const express = require("express");
 const router = express.Router();
 
 const resultController = require("../controllers/resultController");
+const validateResult = require("../middlewares/validateResult");
 
-// GET
+// GET Results
 router.get("/", resultController.getResults);
 
-// POST
-router.post("/", resultController.createResult);
+// CREATE Result
+router.post(
+    "/",
+    validateResult,
+    resultController.createResult
+);
 
 module.exports = router;
