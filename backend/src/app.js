@@ -9,7 +9,8 @@ const enrollmentRoutes = require("./routes/enrollmentRoutes");
 const attendanceRoutes = require("./routes/attendanceRoutes");
 const resultRoutes = require("./routes/resultRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
-
+const cgpaRoutes = require("./routes/cgpaRoutes");
+const authRoutes = require("./routes/authRoutes");
 const app = express();
 
 app.use(cors());
@@ -27,5 +28,7 @@ app.use("/api/enrollments", enrollmentRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/results", resultRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/cgpa", cgpaRoutes);
+app.use("/api/auth", authRoutes);
 
 module.exports = app;
