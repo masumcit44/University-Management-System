@@ -8,11 +8,11 @@ exports.getAttendance = (req, res) => {
         if (err) {
             return res.status(500).json({
                 success: false,
-                error: err
+                message: err.message
             });
         }
 
-        res.json({
+        res.status(200).json({
             success: true,
             data: results
         });
@@ -51,6 +51,56 @@ exports.getAttendanceById = (req, res) => {
 
 };
 
+// =======================
+// GET Attendance By Course (all students, one course)
+// =======================
+exports.getAttendanceByCourse = (req, res) => {
+
+    const { course_id } = req.params;
+
+    Attendance.getAttendanceByCourse(course_id, (err, results) => {
+
+        if (err) {
+            return res.status(500).json({
+                success: false,
+                message: err.message
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: results
+        });
+
+    });
+
+};
+
+// =======================
+// GET Attendance By Student (all courses, one student)
+// =======================
+exports.getAttendanceByStudent = (req, res) => {
+
+    const { student_id } = req.params;
+
+    Attendance.getAttendanceByStudent(student_id, (err, results) => {
+
+        if (err) {
+            return res.status(500).json({
+                success: false,
+                message: err.message
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: results
+        });
+
+    });
+
+};
+
 // CREATE Attendance
 exports.createAttendance = (req, res) => {
 
@@ -76,7 +126,7 @@ exports.createAttendance = (req, res) => {
             if (err) {
                 return res.status(500).json({
                     success: false,
-                    error: err
+                    message: err.message
                 });
             }
 

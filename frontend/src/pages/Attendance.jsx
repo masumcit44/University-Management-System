@@ -1,7 +1,7 @@
 import MainLayout from "../layouts/MainLayout";
 import { useEffect, useState } from "react";
 import api from "../services/api";
-import { CalendarCheck, Search } from "lucide-react";
+import { CalendarCheck, BookOpen, User, Search } from "lucide-react";
 
 import PageHeader from "../components/PageHeader";
 import Loader from "../components/Loader";
@@ -11,10 +11,11 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import RowActions from "../components/RowActions";
 import Field, { CONTROL_CLASS } from "../components/Field";
 
-const STATUS_STYLES = {
-  Present: "bg-green-100 text-green-700",
-  Absent: "bg-red-100 text-red-700",
-  Late: "bg-amber-100 text-amber-700",
+// Small colour square per status - no pills, keeps the ledger look
+const STATUS_DOTS = {
+  Present: "bg-accent",
+  Absent: "bg-danger",
+  Late: "bg-warn",
 };
 
 const EMPTY_FORM = {
@@ -26,11 +27,57 @@ const EMPTY_FORM = {
 // MySQL DATE columns arrive as ISO strings; <input type="date"> needs YYYY-MM-DD.
 const toDateInput = (value) => (value ? String(value).split("T")[0] : "");
 
+// Shared table cell styles - reused by every column
+const TH = "text-left px-5 py-3 label-mono whitespace-nowrap";
+const TD = "px-5 py-3.5 text-[0.8125rem] text-ink-soft whitespace-nowrap";
+
+// Distinct course options out of a flat records array (for a course dropdown)
+const distinctCourses = (records) => {
+  const map = new Map();
+  records.forEach((r) => {
+    if (!map.has(r.course_id)) {
+      map.set(r.course_id, {
+        course_id: r.course_id,
+        course_name: r.course_name,
+        course_code: r.course_code,
+      });
+    }
+  });
+  return Array.from(map.values());
+};
+
+// Distinct dates out of a flat records array, newest first
+const distinctDates = (records) =>
+  [...new Set(records.map((r) => toDateInput(r.attendance_date)))].sort(
+    (a, b) => (a < b ? 1 : -1)
+  );
+
+// Sort records chronologically (oldest first) - reads like a history log
+const sortByDateAsc = (records) =>
+  [...records].sort((a, b) =>
+    toDateInput(a.attendance_date) < toDateInput(b.attendance_date) ? -1 : 1
+  );
+
 function Attendance() {
-  const [attendance, setAttendance] = useState([]);
+  // "course" -> pick a course, then pick a date, see that day's roster
+  // "student"-> type a student ID, then pick a course, see every date's status
+  const [mode, setMode] = useState("course");
+
+  const [courseResults, setCourseResults] = useState(null);
+  const [studentResults, setStudentResults] = useState(null);
+
   const [enrollments, setEnrollments] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [courses, setCourses] = useState([]);
+
+  const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [selectedDate, setSelectedDate] = useState("");
+
+  const [studentIdInput, setStudentIdInput] = useState("");
+  const [searchedStudentId, setSearchedStudentId] = useState("");
+  const [selectedStudentCourseId, setSelectedStudentCourseId] = useState("");
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -39,21 +86,9 @@ function Attendance() {
   const [formData, setFormData] = useState(EMPTY_FORM);
 
   useEffect(() => {
-    fetchAttendance();
     fetchEnrollments();
+    fetchCourses();
   }, []);
-
-  const fetchAttendance = async () => {
-    try {
-      const res = await api.get("/attendance");
-      setAttendance(res.data.data);
-    } catch (err) {
-      console.error(err);
-      alert("Failed to load attendance");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const fetchEnrollments = async () => {
     try {
@@ -61,6 +96,86 @@ function Attendance() {
       setEnrollments(res.data.data);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const fetchCourses = async () => {
+    try {
+      const res = await api.get("/courses");
+      setCourses(res.data.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // =======================
+  // Mode switching
+  // =======================
+  const switchMode = (nextMode) => {
+    setMode(nextMode);
+    setError("");
+
+    setSelectedCourseId("");
+    setSelectedDate("");
+    setCourseResults(null);
+
+    setStudentIdInput("");
+    setSearchedStudentId("");
+    setSelectedStudentCourseId("");
+    setStudentResults(null);
+  };
+
+  const handleCourseSearch = async (course_id) => {
+    setSelectedCourseId(course_id);
+    setSelectedDate("");
+    setCourseResults(null);
+
+    if (!course_id) return;
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const res = await api.get(`/attendance/course/${course_id}`);
+      setCourseResults(res.data.data);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to load course attendance");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStudentIdSearch = async () => {
+    if (!studentIdInput) return;
+
+    setSearchedStudentId(studentIdInput);
+    setSelectedStudentCourseId("");
+    setStudentResults(null);
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const res = await api.get(`/attendance/student/${studentIdInput}`);
+      setStudentResults(res.data.data);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to load student attendance");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Refreshes whichever view is currently active, after create/edit/delete
+  const refreshCurrentView = () => {
+    if (mode === "course" && selectedCourseId) {
+      handleCourseSearch(selectedCourseId);
+    } else if (mode === "student" && searchedStudentId) {
+      api
+        .get(`/attendance/student/${searchedStudentId}`)
+        .then((res) => setStudentResults(res.data.data))
+        .catch((err) => console.error(err));
     }
   };
 
@@ -108,7 +223,7 @@ function Attendance() {
       setEditingId(null);
       setFormData(EMPTY_FORM);
 
-      fetchAttendance();
+      refreshCurrentView();
     } catch (err) {
       console.error(err);
       alert(err.response?.data?.message || "Failed to save attendance");
@@ -119,7 +234,7 @@ function Attendance() {
     try {
       await api.delete(`/attendance/${deletingId}`);
       setDeletingId(null);
-      fetchAttendance();
+      refreshCurrentView();
     } catch (err) {
       console.error(err);
       alert(err.response?.data?.message || "Failed to delete attendance");
@@ -127,104 +242,320 @@ function Attendance() {
   };
 
   const statusBadge = (status) => (
-    <span
-      className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-        STATUS_STYLES[status] || "bg-slate-100 text-slate-600"
-      }`}
-    >
-      {status}
+    <span className="inline-flex items-center gap-2">
+      <span
+        className={`w-2 h-2 shrink-0 ${STATUS_DOTS[status] || "bg-ink-mute"}`}
+      />
+      <span className="label-mono !text-ink">{status}</span>
     </span>
   );
 
-  const filteredAttendance = attendance.filter((record) => {
-    const term = searchTerm.toLowerCase();
+  // =======================
+  // Table renderer - ID Column Removed
+  // =======================
+  const AttendanceTable = ({ records, showStudent = true, showDate = false }) => (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="bg-paper border-b border-line">
+            {showStudent && <th className={TH}>Student</th>}
+            {showDate && <th className={TH}>Date</th>}
+            <th className={TH}>Status</th>
+            <th className={`${TH} text-center`}>Action</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {records.map((record) => (
+            <tr
+              key={record.attendance_id}
+              className="border-b border-line last:border-b-0 hover:bg-paper transition-colors"
+            >
+              {showStudent && (
+                <td className="px-5 py-3.5 text-[0.8125rem] font-semibold text-ink whitespace-nowrap">
+                  {record.student_name}
+                </td>
+              )}
+
+              {showDate && (
+                <td className={`${TD} font-mono`}>
+                  {toDateInput(record.attendance_date)}
+                </td>
+              )}
+
+              <td className="px-5 py-3.5 whitespace-nowrap">
+                {statusBadge(record.status)}
+              </td>
+
+              <td className="px-5 py-3.5">
+                <RowActions
+                  onEdit={() => openEditModal(record)}
+                  onDelete={() => setDeletingId(record.attendance_id)}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const summarize = (records) => ({
+    Present: records.filter((r) => r.status === "Present").length,
+    Absent: records.filter((r) => r.status === "Absent").length,
+    Late: records.filter((r) => r.status === "Late").length,
+  });
+
+  // =======================
+  // "Course" mode - course -> date drill-down (one day's roster)
+  // =======================
+  const courseDates = courseResults ? distinctDates(courseResults) : [];
+
+  const dateFilteredRecords = (courseResults || []).filter(
+    (r) => toDateInput(r.attendance_date) === selectedDate
+  );
+
+  // =======================
+  // "Student" mode - student -> course (full date history for that course)
+  // =======================
+  const studentCourses = studentResults ? distinctCourses(studentResults) : [];
+
+  const studentCourseRecords = sortByDateAsc(
+    (studentResults || []).filter(
+      (r) => String(r.course_id) === String(selectedStudentCourseId)
+    )
+  );
+
+  const renderBody = () => {
+    if (loading) return <Loader text="Loading attendance" />;
+
+    if (error) {
+      return <p className="text-[0.8125rem] text-danger px-5 py-6">{error}</p>;
+    }
+
+    if (mode === "course") {
+      if (!selectedCourseId) {
+        return (
+          <div className="p-5">
+            <EmptyState
+              icon={BookOpen}
+              title="Select a course"
+              hint="Choose a course above, then pick a class date to see that day's roster"
+            />
+          </div>
+        );
+      }
+
+      if (courseDates.length === 0) {
+        return (
+          <div className="p-5">
+            <EmptyState
+              icon={CalendarCheck}
+              title="No attendance recorded for this course yet"
+              hint="Add the first attendance record to get started"
+            />
+          </div>
+        );
+      }
+
+      if (!selectedDate) {
+        return (
+          <div className="p-5">
+            <EmptyState
+              icon={CalendarCheck}
+              title="Select a date"
+              hint={`${courseDates.length} class dates recorded for this course - pick one above`}
+            />
+          </div>
+        );
+      }
+
+      const s = summarize(dateFilteredRecords);
+
+      return (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 bg-paper border-b border-line">
+            <p className="label-mono">
+              {dateFilteredRecords.length} students on {selectedDate}
+            </p>
+            <p className="label-mono">
+              {s.Present} Present · {s.Absent} Absent · {s.Late} Late
+            </p>
+          </div>
+          <AttendanceTable
+            records={dateFilteredRecords}
+            showStudent={true}
+            showDate={false}
+          />
+        </>
+      );
+    }
+
+    // mode === "student"
+    if (!searchedStudentId) {
+      return (
+        <div className="p-5">
+          <EmptyState
+            icon={User}
+            title="Enter a student ID"
+            hint="Type a student ID above and press Search to begin"
+          />
+        </div>
+      );
+    }
+
+    if (studentCourses.length === 0) {
+      return (
+        <div className="p-5">
+          <EmptyState
+            icon={CalendarCheck}
+            title="No attendance recorded for this student yet"
+            hint="Add the first attendance record to get started"
+          />
+        </div>
+      );
+    }
+
+    if (!selectedStudentCourseId) {
+      return (
+        <div className="p-5">
+          <EmptyState
+            icon={BookOpen}
+            title="Select a course"
+            hint={`This student is enrolled in ${studentCourses.length} course(s) - pick one above`}
+          />
+        </div>
+      );
+    }
+
+    const s = summarize(studentCourseRecords);
+    const total = studentCourseRecords.length;
+    const presentPct = total ? Math.round((s.Present / total) * 100) : 0;
 
     return (
-      record.student_name.toLowerCase().includes(term) ||
-      record.course_name.toLowerCase().includes(term)
+      <>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 bg-paper border-b border-line">
+          <p className="label-mono">{total} class dates recorded</p>
+          <p className="label-mono">
+            {s.Present} Present · {s.Absent} Absent · {s.Late} Late ·{" "}
+            {presentPct}% attendance
+          </p>
+        </div>
+        <AttendanceTable
+          records={studentCourseRecords}
+          showStudent={false}
+          showDate={true}
+        />
+      </>
     );
-  });
+  };
 
   return (
     <MainLayout>
       <PageHeader
         title="Attendance"
-        subtitle="Daily attendance records"
+        subtitle="Course by course presence log, recorded against each enrollment."
         actionLabel="Add Attendance"
         onAction={openCreateModal}
       />
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-4 border-b border-slate-100">
-          <div className="relative w-80">
-            <Search
-              size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            />
+      <div className="surface">
+        {/* Mode toggle */}
+        <div className="flex flex-wrap items-center gap-2 px-5 py-4 border-b border-line">
+          <button
+            onClick={() => switchMode("course")}
+            className={`label-mono px-3 py-1.5 border ${
+              mode === "course"
+                ? "border-ink text-ink bg-paper"
+                : "border-line text-ink-mute"
+            }`}
+          >
+            Search By Course
+          </button>
 
-            <input
-              type="text"
-              placeholder="Search student or course..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="border border-slate-200 rounded-lg pl-9 pr-4 py-2 w-full outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+          <button
+            onClick={() => switchMode("student")}
+            className={`label-mono px-3 py-1.5 border ${
+              mode === "student"
+                ? "border-ink text-ink bg-paper"
+                : "border-line text-ink-mute"
+            }`}
+          >
+            Search By Student ID
+          </button>
         </div>
 
-        {loading ? (
-          <Loader text="Loading attendance..." />
-        ) : filteredAttendance.length === 0 ? (
-          <EmptyState
-            icon={CalendarCheck}
-            title={
-              attendance.length === 0
-                ? "No attendance records found"
-                : "No records match your search"
-            }
-            hint={
-              attendance.length === 0
-                ? "Add the first attendance record to get started"
-                : "Try a different student or course"
-            }
-          />
-        ) : (
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-100">
-              <tr>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">ID</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Student</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Course</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Date</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Status</th>
-                <th className="text-center p-4 text-sm font-semibold text-slate-500">Action</th>
-              </tr>
-            </thead>
+        {/* Mode-specific toolbar */}
+        <div className="flex flex-wrap items-center gap-4 px-5 py-4 border-b border-line">
+          {mode === "course" && (
+            <>
+              <select
+                value={selectedCourseId}
+                onChange={(e) => handleCourseSearch(e.target.value)}
+                className={`${CONTROL_CLASS} !mt-0 w-full sm:w-72`}
+              >
+                <option value="">Select Course</option>
+                {courses.map((c) => (
+                  <option key={c.course_id} value={c.course_id}>
+                    {c.course_code} — {c.course_name}
+                  </option>
+                ))}
+              </select>
 
-            <tbody>
-              {filteredAttendance.map((record) => (
-                <tr
-                  key={record.attendance_id}
-                  className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors"
+              {courseDates.length > 0 && (
+                <select
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className={`${CONTROL_CLASS} !mt-0 w-full sm:w-52`}
                 >
-                  <td className="p-4 text-slate-500">#{record.attendance_id}</td>
-                  <td className="p-4 font-medium text-slate-800">{record.student_name}</td>
-                  <td className="p-4 text-slate-600">{record.course_name}</td>
-                  <td className="p-4 text-slate-600">
-                    {toDateInput(record.attendance_date)}
-                  </td>
-                  <td className="p-4">{statusBadge(record.status)}</td>
-                  <td className="p-4">
-                    <RowActions
-                      onEdit={() => openEditModal(record)}
-                      onDelete={() => setDeletingId(record.attendance_id)}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+                  <option value="">Select Date</option>
+                  {courseDates.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </>
+          )}
+
+          {mode === "student" && (
+            <>
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                <input
+                  type="number"
+                  placeholder="Type Student ID"
+                  value={studentIdInput}
+                  onChange={(e) => setStudentIdInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleStudentIdSearch()}
+                  className={`${CONTROL_CLASS} !mt-0 w-full sm:w-52`}
+                />
+
+                <button onClick={handleStudentIdSearch} className="btn-solid">
+                  <Search size={15} strokeWidth={2.5} />
+                  Search
+                </button>
+              </div>
+
+              {studentCourses.length > 0 && (
+                <select
+                  value={selectedStudentCourseId}
+                  onChange={(e) => setSelectedStudentCourseId(e.target.value)}
+                  className={`${CONTROL_CLASS} !mt-0 w-full sm:w-72`}
+                >
+                  <option value="">Select Course</option>
+                  {studentCourses.map((c) => (
+                    <option key={c.course_id} value={c.course_id}>
+                      {c.course_code} — {c.course_name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </>
+          )}
+        </div>
+
+        {renderBody()}
       </div>
 
       {showModal && (

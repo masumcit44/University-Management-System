@@ -26,11 +26,17 @@ const EMPTY_FORM = {
 // MySQL DATE columns arrive as ISO strings; <input type="date"> needs YYYY-MM-DD.
 const toDateInput = (value) => (value ? value.split("T")[0] : "");
 
+// Shared table cell styles - reused by every column
+const TH = "text-left px-5 py-2.5 label-mono whitespace-nowrap";
+const TD = "px-5 py-3 text-[0.8125rem] text-ink-soft whitespace-nowrap";
+
 function Teachers() {
   const [teachers, setTeachers] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [courseMap, setCourseMap] = useState({});
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [error, setError] = useState("");
+  const [searchId, setSearchId] = useState("");
 
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -41,15 +47,18 @@ function Teachers() {
   useEffect(() => {
     fetchTeachers();
     fetchDepartments();
+    fetchCoursesTaught();
   }, []);
 
   const fetchTeachers = async () => {
     try {
+      setError("");
+
       const res = await api.get("/teachers");
       setTeachers(res.data.data);
     } catch (err) {
       console.error(err);
-      alert("Failed to load teachers");
+      setError("Failed to load teachers");
     } finally {
       setLoading(false);
     }
@@ -59,6 +68,31 @@ function Teachers() {
     try {
       const res = await api.get("/departments");
       setDepartments(res.data.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Teachers aren't linked to courses directly - the link lives in the
+  // Timetable (course_id + teacher_id per class), so derive it from there.
+  const fetchCoursesTaught = async () => {
+    try {
+      const res = await api.get("/timetable");
+      const map = {};
+
+      res.data.data.forEach((entry) => {
+        const tid = entry.teacher_id;
+
+        if (!map[tid]) {
+          map[tid] = new Map();
+        }
+
+        // de-duplicate by course_code - a teacher may have several
+        // timetable slots for the same course
+        map[tid].set(entry.course_code, entry.course_name);
+      });
+
+      setCourseMap(map);
     } catch (err) {
       console.error(err);
     }
@@ -133,100 +167,183 @@ function Teachers() {
     }
   };
 
+  // Search is ID-only - matches the raw id or the zero-padded display id
   const filteredTeachers = teachers.filter((teacher) => {
-    const term = searchTerm.toLowerCase();
+    if (!searchId.trim()) return true;
+
+    const term = searchId.trim();
+    const paddedId = String(teacher.teacher_id).padStart(3, "0");
 
     return (
-      teacher.teacher_name.toLowerCase().includes(term) ||
-      teacher.teacher_email.toLowerCase().includes(term)
+      String(teacher.teacher_id).includes(term) || paddedId.includes(term)
     );
   });
+
+  // Group by department - sorted alphabetically for a stable layout
+  const departmentGroups = Object.values(
+    filteredTeachers.reduce((acc, t) => {
+      const key = t.department_name;
+
+      if (!acc[key]) {
+        acc[key] = { department_name: key, teachers: [] };
+      }
+
+      acc[key].teachers.push(t);
+      return acc;
+    }, {})
+  ).sort((a, b) => a.department_name.localeCompare(b.department_name));
+
+  const renderCourses = (teacherId) => {
+    const courses = courseMap[teacherId];
+
+    if (!courses || courses.size === 0) {
+      return <span className="text-ink-soft">—</span>;
+    }
+
+    return (
+      <div className="flex flex-wrap gap-1.5 max-w-[220px]">
+        {[...courses.keys()].map((code) => (
+          <span
+            key={code}
+            className="inline-block border border-line px-2 py-1 label-mono text-ink-soft"
+          >
+            {code}
+          </span>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <MainLayout>
       <PageHeader
         title="Teachers"
-        subtitle="Faculty members across departments"
+        subtitle="Faculty members appointed across the ten departments of Eastern University."
         actionLabel="Add Teacher"
         onAction={openCreateModal}
       />
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-4 border-b border-slate-100">
-          <div className="relative w-80">
+      <div className="surface p-5 mb-6">
+        <Field label="Search by Teacher ID">
+          <div className="relative max-w-xs">
             <Search
-              size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              size={15}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-mute pointer-events-none"
             />
-
             <input
-              type="text"
-              placeholder="Search teacher or email..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="border border-slate-200 rounded-lg pl-9 pr-4 py-2 w-full outline-none focus:ring-2 focus:ring-blue-500"
+              type="number"
+              placeholder="e.g. 3"
+              value={searchId}
+              onChange={(e) => setSearchId(e.target.value)}
+              className={`${CONTROL_CLASS} !mt-0 !pl-9`}
             />
           </div>
-        </div>
+        </Field>
 
-        {loading ? (
-          <Loader text="Loading teachers..." />
-        ) : filteredTeachers.length === 0 ? (
+        <p className="label-mono mt-1">
+          {filteredTeachers.length} of {teachers.length} records
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="surface">
+          <Loader text="Loading teachers" />
+        </div>
+      ) : error ? (
+        <div className="surface">
+          <p className="text-[0.8125rem] text-danger px-5 py-6">{error}</p>
+        </div>
+      ) : departmentGroups.length === 0 ? (
+        <div className="surface p-5">
           <EmptyState
             icon={GraduationCap}
             title={
               teachers.length === 0
                 ? "No teachers found"
-                : "No teachers match your search"
+                : "No teacher matches that ID"
             }
             hint={
               teachers.length === 0
                 ? "Add the first faculty member to get started"
-                : "Try a different name or email"
+                : "Try a different teacher ID"
             }
           />
-        ) : (
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-100">
-              <tr>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">ID</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Name</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Designation</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Email</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Phone</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Department</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Joined</th>
-                <th className="text-center p-4 text-sm font-semibold text-slate-500">Action</th>
-              </tr>
-            </thead>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {departmentGroups.map((dept) => (
+            <div key={dept.department_name}>
+              {/* Department header */}
+              <div className="flex items-baseline justify-between gap-4 mb-3">
+                <h2 className="font-display font-bold text-lg text-ink tracking-tight">
+                  {dept.department_name}
+                </h2>
+                <p className="label-mono">
+                  {dept.teachers.length} teacher
+                  {dept.teachers.length > 1 ? "s" : ""}
+                </p>
+              </div>
 
-            <tbody>
-              {filteredTeachers.map((teacher) => (
-                <tr
-                  key={teacher.teacher_id}
-                  className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors"
-                >
-                  <td className="p-4 text-slate-500">#{teacher.teacher_id}</td>
-                  <td className="p-4 font-medium text-slate-800">{teacher.teacher_name}</td>
-                  <td className="p-4 text-slate-600">{teacher.designation || "—"}</td>
-                  <td className="p-4 text-slate-600">{teacher.teacher_email}</td>
-                  <td className="p-4 text-slate-600">{teacher.teacher_phone}</td>
-                  <td className="p-4 text-slate-600">{teacher.department_name}</td>
-                  <td className="p-4 text-slate-600">
-                    {toDateInput(teacher.joining_date) || "—"}
-                  </td>
-                  <td className="p-4">
-                    <RowActions
-                      onEdit={() => openEditModal(teacher)}
-                      onDelete={() => setDeletingId(teacher.teacher_id)}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+              <div className="surface overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-paper border-b border-line">
+                        <th className={TH}>ID</th>
+                        <th className={TH}>Name</th>
+                        <th className={TH}>Designation</th>
+                        <th className={TH}>Email</th>
+                        <th className={TH}>Phone</th>
+                        <th className={TH}>Courses</th>
+                        <th className={TH}>Joined</th>
+                        <th className={`${TH} text-center`}>Action</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {dept.teachers.map((teacher) => (
+                        <tr
+                          key={teacher.teacher_id}
+                          className="border-b border-line last:border-b-0 hover:bg-paper transition-colors"
+                        >
+                          <td className={`${TD} font-mono text-ink-mute`}>
+                            {String(teacher.teacher_id).padStart(3, "0")}
+                          </td>
+
+                          <td className="px-5 py-3 text-[0.8125rem] font-semibold text-ink whitespace-nowrap">
+                            {teacher.teacher_name}
+                          </td>
+
+                          <td className={TD}>{teacher.designation || "—"}</td>
+
+                          <td className={TD}>{teacher.teacher_email}</td>
+
+                          <td className={`${TD} font-mono`}>{teacher.teacher_phone}</td>
+
+                          <td className="px-5 py-3">
+                            {renderCourses(teacher.teacher_id)}
+                          </td>
+
+                          <td className={`${TD} font-mono`}>
+                            {toDateInput(teacher.joining_date) || "—"}
+                          </td>
+
+                          <td className="px-5 py-3 text-center">
+                            <RowActions
+                              onEdit={() => openEditModal(teacher)}
+                              onDelete={() => setDeletingId(teacher.teacher_id)}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {showModal && (
         <Modal

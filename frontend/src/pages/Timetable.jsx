@@ -1,37 +1,51 @@
 import MainLayout from "../layouts/MainLayout";
 import { useEffect, useState } from "react";
 import api from "../services/api";
-import { Plus, Pencil, Trash2, CalendarClock, Clock, MapPin } from "lucide-react";
+import { CalendarClock, Search, Clock, MapPin } from "lucide-react";
 
-const DAY_STYLES = {
-  Saturday: "bg-violet-100 text-violet-700",
-  Sunday: "bg-sky-100 text-sky-700",
-  Monday: "bg-emerald-100 text-emerald-700",
-  Tuesday: "bg-amber-100 text-amber-700",
-  Wednesday: "bg-rose-100 text-rose-700",
-  Thursday: "bg-indigo-100 text-indigo-700",
-  Friday: "bg-slate-200 text-slate-600",
+import PageHeader from "../components/PageHeader";
+import Loader from "../components/Loader";
+import EmptyState from "../components/EmptyState";
+import Modal from "../components/Modal";
+import ConfirmDialog from "../components/ConfirmDialog";
+import RowActions from "../components/RowActions";
+import Field, { CONTROL_CLASS } from "../components/Field";
+
+const DAYS = [
+  "Saturday",
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+];
+
+const EMPTY_FORM = {
+  course_id: "",
+  teacher_id: "",
+  room_no: "",
+  day: "Saturday",
+  start_time: "",
+  end_time: "",
 };
 
-const DAYS = Object.keys(DAY_STYLES);
+const TH = "text-left px-5 py-3 label-mono whitespace-nowrap";
+const TD = "px-5 py-3.5 text-[0.8125rem] text-ink-soft whitespace-nowrap";
 
 function Timetable() {
   const [entries, setEntries] = useState([]);
   const [courses, setCourses] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
-  const [formData, setFormData] = useState({
-    course_id: "",
-    teacher_id: "",
-    room_no: "",
-    day: "Saturday",
-    start_time: "",
-    end_time: "",
-  });
+  const [formData, setFormData] = useState(EMPTY_FORM);
 
   useEffect(() => {
     fetchTimetable();
@@ -41,11 +55,12 @@ function Timetable() {
 
   const fetchTimetable = async () => {
     try {
+      setError("");
       const res = await api.get("/timetable");
       setEntries(res.data.data);
     } catch (err) {
       console.error(err);
-      alert("Failed to load timetable");
+      setError("Failed to load timetable");
     } finally {
       setLoading(false);
     }
@@ -70,26 +85,12 @@ function Timetable() {
   };
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
-  };
-
-  const resetForm = () => {
-    setFormData({
-      course_id: "",
-      teacher_id: "",
-      room_no: "",
-      day: "Saturday",
-      start_time: "",
-      end_time: "",
-    });
-    setEditingId(null);
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   const openCreateModal = () => {
-    resetForm();
+    setFormData(EMPTY_FORM);
+    setEditingId(null);
     setShowModal(true);
   };
 
@@ -107,17 +108,21 @@ function Timetable() {
   };
 
   const handleSave = async () => {
+    if (!formData.course_id || !formData.teacher_id || !formData.room_no) {
+      alert("Course, teacher and room are required");
+      return;
+    }
+
     try {
       if (editingId) {
         await api.put(`/timetable/${editingId}`, formData);
-        alert("Timetable Entry Updated Successfully");
       } else {
         await api.post("/timetable", formData);
-        alert("Timetable Entry Created Successfully");
       }
 
       setShowModal(false);
-      resetForm();
+      setEditingId(null);
+      setFormData(EMPTY_FORM);
       fetchTimetable();
     } catch (err) {
       console.error(err);
@@ -125,128 +130,152 @@ function Timetable() {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("Delete this timetable entry?")) return;
-
+  const handleDelete = async () => {
     try {
-      await api.delete(`/timetable/${id}`);
+      await api.delete(`/timetable/${deletingId}`);
+      setDeletingId(null);
       fetchTimetable();
     } catch (err) {
       console.error(err);
-      alert("Failed to delete timetable entry");
+      alert(err.response?.data?.message || "Failed to delete entry");
     }
   };
 
+  const filteredEntries = entries.filter((entry) => {
+    const term = searchTerm.toLowerCase();
+    return (
+      entry.course_name.toLowerCase().includes(term) ||
+      entry.teacher_name.toLowerCase().includes(term) ||
+      entry.day.toLowerCase().includes(term)
+    );
+  });
+
   return (
     <MainLayout>
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-4xl font-bold text-slate-800">Timetable</h1>
-          <p className="text-slate-500 mt-1">
-            Weekly class schedule across courses and teachers
+      <PageHeader
+        title="Timetable"
+        subtitle="Weekly class schedule across courses, teachers and rooms."
+        actionLabel="Add Class"
+        onAction={openCreateModal}
+      />
+
+      <div className="surface">
+        <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 border-b border-line">
+          <div className="relative w-full sm:w-80">
+            <Search
+              size={15}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-mute pointer-events-none"
+            />
+            <input
+              type="text"
+              placeholder="Search course, teacher or day"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="control !pl-9"
+            />
+          </div>
+
+          <p className="label-mono">
+            {filteredEntries.length} of {entries.length} records
           </p>
         </div>
 
-        <button
-          onClick={openCreateModal}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors"
-        >
-          <Plus size={18} />
-          Add Class
-        </button>
-      </div>
-
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         {loading ? (
-          <p className="text-blue-600 p-6">Loading timetable...</p>
-        ) : entries.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-            <CalendarClock size={40} className="mb-3" />
-            <p className="font-medium">No classes scheduled yet</p>
-            <p className="text-sm">Add the first class to build the schedule</p>
+          <Loader text="Loading timetable" />
+        ) : error ? (
+          <p className="text-[0.8125rem] text-danger px-5 py-6">{error}</p>
+        ) : filteredEntries.length === 0 ? (
+          <div className="p-5">
+            <EmptyState
+              icon={CalendarClock}
+              title={
+                entries.length === 0
+                  ? "No classes scheduled yet"
+                  : "No classes match your search"
+              }
+              hint={
+                entries.length === 0
+                  ? "Add the first class to build the schedule"
+                  : "Try a different course, teacher or day"
+              }
+            />
           </div>
         ) : (
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-100">
-              <tr>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Day</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Course</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Teacher</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Room</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Time</th>
-                <th className="text-center p-4 text-sm font-semibold text-slate-500">Action</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {entries.map((entry) => (
-                <tr
-                  key={entry.timetable_id}
-                  className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors"
-                >
-                  <td className="p-4">
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                        DAY_STYLES[entry.day] || "bg-slate-100 text-slate-600"
-                      }`}
-                    >
-                      {entry.day}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <p className="font-medium text-slate-800">{entry.course_name}</p>
-                    <p className="text-xs text-slate-400">{entry.course_code}</p>
-                  </td>
-                  <td className="p-4 text-slate-600">{entry.teacher_name}</td>
-                  <td className="p-4 text-slate-600">
-                    <div className="flex items-center gap-1.5">
-                      <MapPin size={14} className="text-slate-400" />
-                      {entry.room_no}
-                    </div>
-                  </td>
-                  <td className="p-4 text-slate-600">
-                    <div className="flex items-center gap-1.5">
-                      <Clock size={14} className="text-slate-400" />
-                      {entry.start_time} - {entry.end_time}
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex justify-center gap-2">
-                      <button
-                        onClick={() => openEditModal(entry)}
-                        className="p-2 rounded-lg bg-slate-100 hover:bg-blue-100 text-slate-600 hover:text-blue-600 transition-colors"
-                      >
-                        <Pencil size={16} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(entry.timetable_id)}
-                        className="p-2 rounded-lg bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-600 transition-colors"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-paper border-b border-line">
+                  <th className={TH}>Day</th>
+                  <th className={TH}>Course</th>
+                  <th className={TH}>Teacher</th>
+                  <th className={TH}>Room</th>
+                  <th className={TH}>Time</th>
+                  <th className={`${TH} text-center`}>Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody>
+                {filteredEntries.map((entry) => (
+                  <tr
+                    key={entry.timetable_id}
+                    className="border-b border-line last:border-b-0 hover:bg-paper transition-colors"
+                  >
+                    <td className="px-5 py-3.5 whitespace-nowrap">
+                      <span className="inline-block border border-line px-2 py-1 label-mono text-ink-soft">
+                        {entry.day}
+                      </span>
+                    </td>
+
+                    <td className="px-5 py-3.5">
+                      <p className="text-[0.8125rem] font-semibold text-ink">
+                        {entry.course_name}
+                      </p>
+                      <p className="label-mono mt-0.5">{entry.course_code}</p>
+                    </td>
+
+                    <td className={TD}>{entry.teacher_name}</td>
+
+                    <td className={TD}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <MapPin size={13} className="text-ink-mute" />
+                        {entry.room_no}
+                      </span>
+                    </td>
+
+                    <td className={`${TD} font-mono`}>
+                      <span className="inline-flex items-center gap-1.5">
+                        <Clock size={13} className="text-ink-mute" />
+                        {entry.start_time} – {entry.end_time}
+                      </span>
+                    </td>
+
+                    <td className="px-5 py-3.5">
+                      <RowActions
+                        onEdit={() => openEditModal(entry)}
+                        onDelete={() => setDeletingId(entry.timetable_id)}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
-      {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-96 shadow-xl">
-            <h2 className="text-2xl font-bold mb-5 text-slate-800">
-              {editingId ? "Edit Class" : "Add Class"}
-            </h2>
-
-            <label className="text-sm font-medium text-slate-600">Course</label>
+        <Modal
+          title={editingId ? "Edit Class" : "Add Class"}
+          onClose={() => setShowModal(false)}
+          onSave={handleSave}
+          saveLabel={editingId ? "Update" : "Save"}
+        >
+          <Field label="Course">
             <select
               name="course_id"
               value={formData.course_id}
               onChange={handleChange}
-              className="border w-full rounded-lg p-2.5 mt-1 mb-4 outline-none focus:ring-2 focus:ring-blue-500"
+              className={CONTROL_CLASS}
             >
               <option value="">Select Course</option>
               {courses.map((c) => (
@@ -255,13 +284,14 @@ function Timetable() {
                 </option>
               ))}
             </select>
+          </Field>
 
-            <label className="text-sm font-medium text-slate-600">Teacher</label>
+          <Field label="Teacher">
             <select
               name="teacher_id"
               value={formData.teacher_id}
               onChange={handleChange}
-              className="border w-full rounded-lg p-2.5 mt-1 mb-4 outline-none focus:ring-2 focus:ring-blue-500"
+              className={CONTROL_CLASS}
             >
               <option value="">Select Teacher</option>
               {teachers.map((t) => (
@@ -270,23 +300,25 @@ function Timetable() {
                 </option>
               ))}
             </select>
+          </Field>
 
-            <label className="text-sm font-medium text-slate-600">Room No</label>
+          <Field label="Room No">
             <input
               type="text"
               name="room_no"
               placeholder="e.g. 402"
               value={formData.room_no}
               onChange={handleChange}
-              className="border w-full rounded-lg p-2.5 mt-1 mb-4 outline-none focus:ring-2 focus:ring-blue-500"
+              className={CONTROL_CLASS}
             />
+          </Field>
 
-            <label className="text-sm font-medium text-slate-600">Day</label>
+          <Field label="Day">
             <select
               name="day"
               value={formData.day}
               onChange={handleChange}
-              className="border w-full rounded-lg p-2.5 mt-1 mb-4 outline-none focus:ring-2 focus:ring-blue-500"
+              className={CONTROL_CLASS}
             >
               {DAYS.map((d) => (
                 <option key={d} value={d}>
@@ -294,46 +326,39 @@ function Timetable() {
                 </option>
               ))}
             </select>
+          </Field>
 
-            <div className="flex gap-3 mb-5">
-              <div className="flex-1">
-                <label className="text-sm font-medium text-slate-600">Start Time</label>
-                <input
-                  type="time"
-                  name="start_time"
-                  value={formData.start_time}
-                  onChange={handleChange}
-                  className="border w-full rounded-lg p-2.5 mt-1 outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div className="flex-1">
-                <label className="text-sm font-medium text-slate-600">End Time</label>
-                <input
-                  type="time"
-                  name="end_time"
-                  value={formData.end_time}
-                  onChange={handleChange}
-                  className="border w-full rounded-lg p-2.5 mt-1 outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Start Time">
+              <input
+                type="time"
+                name="start_time"
+                value={formData.start_time}
+                onChange={handleChange}
+                className={CONTROL_CLASS}
+              />
+            </Field>
 
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setShowModal(false)}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-lg font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium"
-              >
-                Save
-              </button>
-            </div>
+            <Field label="End Time">
+              <input
+                type="time"
+                name="end_time"
+                value={formData.end_time}
+                onChange={handleChange}
+                className={CONTROL_CLASS}
+              />
+            </Field>
           </div>
-        </div>
+        </Modal>
+      )}
+
+      {deletingId && (
+        <ConfirmDialog
+          title="Delete Class"
+          message="Are you sure you want to remove this class from the schedule?"
+          onCancel={() => setDeletingId(null)}
+          onConfirm={handleDelete}
+        />
       )}
     </MainLayout>
   );

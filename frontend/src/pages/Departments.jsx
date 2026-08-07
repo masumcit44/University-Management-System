@@ -1,14 +1,13 @@
 import MainLayout from "../layouts/MainLayout";
 import { useEffect, useState } from "react";
 import api from "../services/api";
-import { Building2, Search } from "lucide-react";
+import { Building2, Search, Pencil, Trash2 } from "lucide-react";
 
 import PageHeader from "../components/PageHeader";
 import Loader from "../components/Loader";
 import EmptyState from "../components/EmptyState";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
-import RowActions from "../components/RowActions";
 import Field, { CONTROL_CLASS } from "../components/Field";
 
 const EMPTY_FORM = {
@@ -20,6 +19,7 @@ const EMPTY_FORM = {
 function Departments() {
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
 
   const [showModal, setShowModal] = useState(false);
@@ -34,11 +34,13 @@ function Departments() {
 
   const fetchDepartments = async () => {
     try {
+      setError("");
+
       const res = await api.get("/departments");
       setDepartments(res.data.data);
     } catch (err) {
       console.error(err);
-      alert("Failed to load departments");
+      setError("Failed to load departments");
     } finally {
       setLoading(false);
     }
@@ -118,32 +120,43 @@ function Departments() {
     <MainLayout>
       <PageHeader
         title="Departments"
-        subtitle="Academic departments of the university"
+        subtitle="Academic departments that own every course, teacher and student record."
         actionLabel="Add Department"
         onAction={openCreateModal}
       />
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-4 border-b border-slate-100">
-          <div className="relative w-80">
-            <Search
-              size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            />
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div className="relative w-full sm:w-80">
+          <Search
+            size={15}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-mute pointer-events-none"
+          />
 
-            <input
-              type="text"
-              placeholder="Search department or code..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="border border-slate-200 rounded-lg pl-9 pr-4 py-2 w-full outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+          <input
+            type="text"
+            placeholder="Search department or code"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="control !pl-9"
+          />
         </div>
 
-        {loading ? (
-          <Loader text="Loading departments..." />
-        ) : filteredDepartments.length === 0 ? (
+        <p className="label-mono">
+          {filteredDepartments.length} of {departments.length} records
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="surface">
+          <Loader text="Loading departments" />
+        </div>
+      ) : error ? (
+        <div className="surface">
+          <p className="text-[0.8125rem] text-danger px-5 py-6">{error}</p>
+        </div>
+      ) : filteredDepartments.length === 0 ? (
+        <div className="surface p-5">
           <EmptyState
             icon={Building2}
             title={
@@ -157,44 +170,69 @@ function Departments() {
                 : "Try a different name or code"
             }
           />
-        ) : (
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-100">
-              <tr>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">ID</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Department</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Code</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Head</th>
-                <th className="text-center p-4 text-sm font-semibold text-slate-500">Action</th>
-              </tr>
-            </thead>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredDepartments.map((department, index) => (
+            <div
+              key={department.department_id}
+              className="surface p-5 flex flex-col relative group hover:border-ink transition-colors"
+            >
+              {/* Index number + code chip */}
+              <div className="flex items-start justify-between mb-4">
+                <span className="font-mono text-[1.75rem] leading-none text-line-strong/15 font-medium">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
 
-            <tbody>
-              {filteredDepartments.map((department) => (
-                <tr
-                  key={department.department_id}
-                  className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors"
+                <span className="inline-block border border-line px-2 py-1 label-mono text-ink-soft">
+                  {department.department_code}
+                </span>
+              </div>
+
+              {/* Name */}
+              <h3 className="font-display font-bold text-lg text-ink tracking-tight leading-snug">
+                {department.department_name}
+              </h3>
+
+              {/* Head */}
+              <p className="text-[0.8125rem] text-ink-soft mt-2">
+                {department.department_head ? (
+                  <>
+                    <span className="label-mono">Head </span>
+                    {department.department_head}
+                  </>
+                ) : (
+                  <span className="label-mono">No head assigned</span>
+                )}
+              </p>
+
+              {/* Actions - revealed on hover, top-right */}
+              <div className="flex gap-1.5 mt-5 pt-4 border-t border-line">
+                <button
+                  onClick={() => openEditModal(department)}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 border border-line text-ink-mute hover:border-accent hover:text-accent hover:bg-accent-soft transition-colors label-mono"
                 >
-                  <td className="p-4 text-slate-500">#{department.department_id}</td>
-                  <td className="p-4 font-medium text-slate-800">
-                    {department.department_name}
-                  </td>
-                  <td className="p-4 text-slate-600">{department.department_code}</td>
-                  <td className="p-4 text-slate-600">
-                    {department.department_head || "—"}
-                  </td>
-                  <td className="p-4">
-                    <RowActions
-                      onEdit={() => openEditModal(department)}
-                      onDelete={() => setDeletingId(department.department_id)}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+                  <Pencil size={13} strokeWidth={1.9} />
+                  Edit
+                </button>
+
+                <button
+                  onClick={() => setDeletingId(department.department_id)}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 border border-line text-ink-mute hover:border-danger hover:text-danger hover:bg-danger-soft transition-colors label-mono"
+                >
+                  <Trash2 size={13} strokeWidth={1.9} />
+                  Delete
+                </button>
+              </div>
+
+              {/* Faint ID footer */}
+              <p className="label-mono absolute bottom-2 right-3 !text-ink-mute/40">
+                #{String(department.department_id).padStart(3, "0")}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {showModal && (
         <Modal

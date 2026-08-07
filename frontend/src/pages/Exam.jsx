@@ -11,11 +11,13 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import RowActions from "../components/RowActions";
 import Field, { CONTROL_CLASS } from "../components/Field";
 
+// Final is the only exam type that counts toward CGPA, so it carries the
+// filled chip. Everything else stays a hairline outline.
 const TYPE_STYLES = {
-  Quiz: "bg-sky-100 text-sky-700",
-  Assignment: "bg-violet-100 text-violet-700",
-  Mid: "bg-amber-100 text-amber-700",
-  Final: "bg-emerald-100 text-emerald-700",
+  Final: "bg-ink text-paper border-ink",
+  Mid: "border-ink-soft text-ink",
+  Quiz: "border-line text-ink-soft",
+  Assignment: "border-line text-ink-soft",
 };
 
 const EMPTY_FORM = {
@@ -28,11 +30,19 @@ const EMPTY_FORM = {
 // MySQL DATE columns arrive as ISO strings; <input type="date"> needs YYYY-MM-DD.
 const toDateInput = (value) => (value ? String(value).split("T")[0] : "");
 
+// Shared table cell styles - reused by every column
+const TH = "text-left px-5 py-3 label-mono whitespace-nowrap";
+const TD = "px-5 py-3.5 text-[0.8125rem] text-ink-soft whitespace-nowrap";
+
 function Exam() {
   const [exams, setExams] = useState([]);
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+
+  // Course selected in the toolbar filter (not the modal form).
+  const [selectedCourseId, setSelectedCourseId] = useState("");
 
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -47,11 +57,13 @@ function Exam() {
 
   const fetchExams = async () => {
     try {
+      setError("");
+
       const res = await api.get("/exams");
       setExams(res.data.data);
     } catch (err) {
       console.error(err);
-      alert("Failed to load exams");
+      setError("Failed to load exams");
     } finally {
       setLoading(false);
     }
@@ -74,7 +86,11 @@ function Exam() {
   };
 
   const openCreateModal = () => {
-    setFormData(EMPTY_FORM);
+    setFormData({
+      ...EMPTY_FORM,
+      // Pre-fill with the course currently selected in the toolbar, if any.
+      course_id: selectedCourseId || "",
+    });
     setEditingId(null);
     setShowModal(true);
   };
@@ -130,103 +146,146 @@ function Exam() {
     }
   };
 
-  const filteredExams = exams.filter((exam) => {
-    const term = searchTerm.toLowerCase();
+  // Course filter applies first, then the text search narrows within it.
+  const courseExams = selectedCourseId
+    ? exams.filter((exam) => String(exam.course_id) === String(selectedCourseId))
+    : [];
 
-    return (
-      exam.course_name.toLowerCase().includes(term) ||
-      exam.course_code.toLowerCase().includes(term) ||
-      exam.exam_type.toLowerCase().includes(term)
-    );
+  const filteredExams = courseExams.filter((exam) => {
+    const term = searchTerm.toLowerCase();
+    return exam.exam_type.toLowerCase().includes(term);
   });
+
+  const selectedCourse = courses.find(
+    (c) => String(c.course_id) === String(selectedCourseId)
+  );
 
   return (
     <MainLayout>
       <PageHeader
         title="Exams"
-        subtitle="Scheduled exams across courses"
+        subtitle="Every assessment scheduled against a course, from quiz to final."
         actionLabel="Add Exam"
         onAction={openCreateModal}
       />
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-4 border-b border-slate-100">
-          <div className="relative w-80">
-            <Search
-              size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-            />
+      <div className="surface">
+        {/* Toolbar */}
+        <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 border-b border-line">
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              value={selectedCourseId}
+              onChange={(e) => setSelectedCourseId(e.target.value)}
+              className="control w-full sm:w-64"
+            >
+              <option value="">Select a course</option>
+              {courses.map((c) => (
+                <option key={c.course_id} value={c.course_id}>
+                  {c.course_name} ({c.course_code})
+                </option>
+              ))}
+            </select>
 
-            <input
-              type="text"
-              placeholder="Search course or exam type..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="border border-slate-200 rounded-lg pl-9 pr-4 py-2 w-full outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            {selectedCourseId && (
+              <div className="relative w-full sm:w-64">
+                <Search
+                  size={15}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-mute pointer-events-none"
+                />
+
+                <input
+                  type="text"
+                  placeholder="Search exam type"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="control !pl-9"
+                />
+              </div>
+            )}
           </div>
+
+          {selectedCourseId && (
+            <p className="label-mono">
+              {filteredExams.length} of {courseExams.length} records
+            </p>
+          )}
         </div>
 
         {loading ? (
-          <Loader text="Loading exams..." />
+          <Loader text="Loading exams" />
+        ) : error ? (
+          <p className="text-[0.8125rem] text-danger px-5 py-6">{error}</p>
+        ) : !selectedCourseId ? (
+          <div className="p-5">
+            <EmptyState
+              icon={NotebookPen}
+              title="Select a course"
+              hint="Choose a course above to see its exams"
+            />
+          </div>
         ) : filteredExams.length === 0 ? (
-          <EmptyState
-            icon={NotebookPen}
-            title={
-              exams.length === 0
-                ? "No exams found"
-                : "No exams match your search"
-            }
-            hint={
-              exams.length === 0
-                ? "Schedule the first exam to get started"
-                : "Try a different course or exam type"
-            }
-          />
+          <div className="p-5">
+            <EmptyState
+              icon={NotebookPen}
+              title={
+                courseExams.length === 0
+                  ? `No exams found for ${selectedCourse?.course_name || "this course"}`
+                  : "No exams match your search"
+              }
+              hint={
+                courseExams.length === 0
+                  ? "Add the first exam for this course to get started"
+                  : "Try a different exam type"
+              }
+            />
+          </div>
         ) : (
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-100">
-              <tr>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">ID</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Course</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Code</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Type</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Date</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Total Marks</th>
-                <th className="text-center p-4 text-sm font-semibold text-slate-500">Action</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredExams.map((exam) => (
-                <tr
-                  key={exam.exam_id}
-                  className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors"
-                >
-                  <td className="p-4 text-slate-500">#{exam.exam_id}</td>
-                  <td className="p-4 font-medium text-slate-800">{exam.course_name}</td>
-                  <td className="p-4 text-slate-600">{exam.course_code}</td>
-                  <td className="p-4">
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                        TYPE_STYLES[exam.exam_type] || "bg-slate-100 text-slate-600"
-                      }`}
-                    >
-                      {exam.exam_type}
-                    </span>
-                  </td>
-                  <td className="p-4 text-slate-600">{toDateInput(exam.exam_date)}</td>
-                  <td className="p-4 text-slate-600">{exam.total_marks}</td>
-                  <td className="p-4">
-                    <RowActions
-                      onEdit={() => openEditModal(exam)}
-                      onDelete={() => setDeletingId(exam.exam_id)}
-                    />
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-paper border-b border-line">
+                  <th className={TH}>Type</th>
+                  <th className={TH}>Date</th>
+                  <th className={`${TH} text-right`}>Total Marks</th>
+                  <th className={`${TH} text-center`}>Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody>
+                {filteredExams.map((exam) => (
+                  <tr
+                    key={exam.exam_id}
+                    className="border-b border-line last:border-b-0 hover:bg-paper transition-colors"
+                  >
+                    <td className="px-5 py-3.5 whitespace-nowrap">
+                      <span
+                        className={`inline-block border px-2 py-1 label-mono ${
+                          TYPE_STYLES[exam.exam_type] || "border-line text-ink-soft"
+                        }`}
+                      >
+                        {exam.exam_type}
+                      </span>
+                    </td>
+
+                    <td className={`${TD} font-mono`}>
+                      {toDateInput(exam.exam_date)}
+                    </td>
+
+                    <td className={`${TD} font-mono text-right text-ink`}>
+                      {Number(exam.total_marks).toFixed(0)}
+                    </td>
+
+                    <td className="px-5 py-3.5">
+                      <RowActions
+                        onEdit={() => openEditModal(exam)}
+                        onDelete={() => setDeletingId(exam.exam_id)}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -293,9 +352,9 @@ function Exam() {
             </Field>
           </div>
 
-          <p className="text-xs text-slate-400 -mt-2">
-            Only <span className="font-medium">Final</span> exams count toward a
-            student's CGPA.
+          <p className="text-xs text-ink-mute -mt-1 border-l-2 border-line pl-3">
+            Only <span className="font-semibold text-ink">Final</span> exams count
+            toward a student's CGPA.
           </p>
         </Modal>
       )}

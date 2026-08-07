@@ -3,21 +3,33 @@ import { Plus } from "lucide-react";
 // Page title + subtitle, with an optional primary action button on the right.
 function PageHeader({ title, subtitle, actionLabel, onAction }) {
   return (
-    <div className="flex justify-between items-center mb-8">
-      <div>
-        <h1 className="text-4xl font-bold text-slate-800">{title}</h1>
-        {subtitle && <p className="text-slate-500 mt-1">{subtitle}</p>}
+    <div className="mb-9">
+      <div className="flex items-end justify-between gap-6 pb-5">
+        <div className="min-w-0">
+          <h1 className="font-display font-extrabold text-[2.5rem] leading-[1.05] tracking-[-0.03em] text-ink">
+            {title}
+          </h1>
+
+          {subtitle && (
+            <p className="text-sm text-ink-soft mt-2.5 max-w-2xl leading-relaxed">
+              {subtitle}
+            </p>
+          )}
+        </div>
+
+        {actionLabel && onAction && (
+          <button onClick={onAction} className="btn-solid shrink-0">
+            <Plus size={15} strokeWidth={2.5} />
+            {actionLabel}
+          </button>
+        )}
       </div>
 
-      {actionLabel && onAction && (
-        <button
-          onClick={onAction}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors"
-        >
-          <Plus size={18} />
-          {actionLabel}
-        </button>
-      )}
+      {/* Masthead rule - heavier on the left, hairline across */}
+      <div className="flex">
+        <span className="h-[2px] w-24 bg-ink" />
+        <span className="h-[2px] flex-1 bg-line" />
+      </div>
     </div>
   );
 }

@@ -1,7 +1,13 @@
 import MainLayout from "../layouts/MainLayout";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../services/api";
-import { ClipboardList, Search } from "lucide-react";
+import {
+  ClipboardList,
+  Search,
+  ChevronDown,
+  ChevronRight,
+  Users,
+} from "lucide-react";
 
 import PageHeader from "../components/PageHeader";
 import Loader from "../components/Loader";
@@ -18,12 +24,23 @@ const EMPTY_FORM = {
   session: "",
 };
 
+// Shared table cell styles - reused inside every course group
+const TH = "text-left px-4 py-2.5 label-mono whitespace-nowrap";
+const TD = "px-4 py-3 text-[0.8125rem] text-ink-soft whitespace-nowrap";
+
+// Joins a set of values into "A, B, C" for display, e.g. mixed semesters/sessions
+function joinDistinct(values) {
+  return Array.from(new Set(values)).sort();
+}
+
 function Enrollment() {
   const [enrollments, setEnrollments] = useState([]);
   const [students, setStudents] = useState([]);
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [collapsed, setCollapsed] = useState(() => new Set());
 
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -39,11 +56,13 @@ function Enrollment() {
 
   const fetchEnrollments = async () => {
     try {
+      setError("");
+
       const res = await api.get("/enrollments");
       setEnrollments(res.data.data);
     } catch (err) {
       console.error(err);
-      alert("Failed to load enrollments");
+      setError("Failed to load enrollments");
     } finally {
       setLoading(false);
     }
@@ -134,97 +153,281 @@ function Enrollment() {
     }
   };
 
-  const filteredEnrollments = enrollments.filter((enrollment) => {
-    const term = searchTerm.toLowerCase();
+  // department_name per course_id, sourced from the courses list
+  const departmentByCourse = useMemo(() => {
+    const map = new Map();
+    courses.forEach((c) => map.set(c.course_id, c.department_name));
+    return map;
+  }, [courses]);
 
-    return (
-      enrollment.student_name.toLowerCase().includes(term) ||
-      enrollment.course_name.toLowerCase().includes(term) ||
-      enrollment.course_code.toLowerCase().includes(term)
+  const term = searchTerm.trim().toLowerCase();
+
+  // Search matches course name or course code only - matching groups keep every student
+  const filteredEnrollments = useMemo(() => {
+    if (!term) return enrollments;
+
+    return enrollments.filter(
+      (e) =>
+        e.course_name.toLowerCase().includes(term) ||
+        e.course_code.toLowerCase().includes(term)
     );
-  });
+  }, [enrollments, term]);
+
+  // Course -> list of enrolled students
+  const groups = useMemo(() => {
+    const byCourse = new Map();
+
+    filteredEnrollments.forEach((e) => {
+      if (!byCourse.has(e.course_id)) {
+        byCourse.set(e.course_id, {
+          course_id: e.course_id,
+          course_name: e.course_name,
+          course_code: e.course_code,
+          enrollments: [],
+        });
+      }
+      byCourse.get(e.course_id).enrollments.push(e);
+    });
+
+    return Array.from(byCourse.values())
+      .map((group) => ({
+        ...group,
+        enrollments: [...group.enrollments].sort((a, b) =>
+          a.student_name.localeCompare(b.student_name)
+        ),
+        semesters: joinDistinct(group.enrollments.map((e) => e.semester)),
+        sessions: joinDistinct(group.enrollments.map((e) => e.session)),
+        department_name: departmentByCourse.get(group.course_id) || "",
+      }))
+      .sort((a, b) => a.course_code.localeCompare(b.course_code));
+  }, [filteredEnrollments, departmentByCourse]);
+
+  const toggleCourse = (id) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const jumpToCourse = (id) => {
+    setCollapsed((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`course-${id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  const allCollapsed =
+    groups.length > 0 && groups.every((g) => collapsed.has(g.course_id));
+
+  const toggleAll = () => {
+    if (allCollapsed) {
+      setCollapsed(new Set());
+    } else {
+      setCollapsed(new Set(groups.map((g) => g.course_id)));
+    }
+  };
 
   return (
     <MainLayout>
       <PageHeader
         title="Enrollment"
-        subtitle="Student course enrollments"
+        subtitle="Which students sit in which course, grouped course by course."
         actionLabel="Add Enrollment"
         onAction={openCreateModal}
       />
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-4 border-b border-slate-100">
-          <div className="relative w-80">
+      <div className="surface">
+        {/* Toolbar */}
+        <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 border-b border-line">
+          <div className="relative w-full sm:w-80">
             <Search
-              size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              size={15}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-mute pointer-events-none"
             />
 
             <input
               type="text"
-              placeholder="Search student or course..."
+              placeholder="Search course or code"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="border border-slate-200 rounded-lg pl-9 pr-4 py-2 w-full outline-none focus:ring-2 focus:ring-blue-500"
+              className="control !pl-9"
             />
+          </div>
+
+          <div className="flex items-center gap-4">
+            <p className="label-mono">
+              {filteredEnrollments.length} of {enrollments.length} records
+            </p>
+
+            {groups.length > 1 && (
+              <button
+                onClick={toggleAll}
+                className="btn-ghost !py-1.5 !px-3 text-[0.6875rem]"
+              >
+                {allCollapsed ? "Expand All" : "Collapse All"}
+              </button>
+            )}
           </div>
         </div>
 
-        {loading ? (
-          <Loader text="Loading enrollments..." />
-        ) : filteredEnrollments.length === 0 ? (
-          <EmptyState
-            icon={ClipboardList}
-            title={
-              enrollments.length === 0
-                ? "No enrollments found"
-                : "No enrollments match your search"
-            }
-            hint={
-              enrollments.length === 0
-                ? "Enroll the first student to get started"
-                : "Try a different student or course"
-            }
-          />
-        ) : (
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-100">
-              <tr>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">ID</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Student</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Course</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Code</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Semester</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Session</th>
-                <th className="text-center p-4 text-sm font-semibold text-slate-500">Action</th>
-              </tr>
-            </thead>
+        {/* Course quick-jump strip */}
+        {!loading && !error && groups.length > 1 && (
+          <div className="flex items-center gap-1.5 px-5 py-3 border-b border-line overflow-x-auto">
+            <span className="label-mono shrink-0 mr-1">Jump to</span>
 
-            <tbody>
-              {filteredEnrollments.map((enrollment) => (
-                <tr
-                  key={enrollment.enrollment_id}
-                  className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors"
+            {groups.map((g) => (
+              <button
+                key={g.course_id}
+                onClick={() => jumpToCourse(g.course_id)}
+                className="shrink-0 font-mono text-[0.6875rem] tracking-wide uppercase border border-line px-2.5 py-1 text-ink-soft hover:border-ink hover:text-ink transition-colors"
+              >
+                {g.course_code}
+                <span className="text-ink-mute ml-1.5">
+                  {g.enrollments.length}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {loading ? (
+          <Loader text="Loading enrollments" />
+        ) : error ? (
+          <p className="text-[0.8125rem] text-danger px-5 py-6">{error}</p>
+        ) : groups.length === 0 ? (
+          <div className="p-5">
+            <EmptyState
+              icon={ClipboardList}
+              title={
+                enrollments.length === 0
+                  ? "No enrollments found"
+                  : "No courses match your search"
+              }
+              hint={
+                enrollments.length === 0
+                  ? "Enroll the first student to get started"
+                  : "Try a different course name or code"
+              }
+            />
+          </div>
+        ) : (
+          <div className="divide-y divide-line">
+            {groups.map((group, index) => {
+              const isCollapsed = collapsed.has(group.course_id);
+
+              return (
+                <div
+                  key={group.course_id}
+                  id={`course-${group.course_id}`}
+                  className="scroll-mt-6"
                 >
-                  <td className="p-4 text-slate-500">#{enrollment.enrollment_id}</td>
-                  <td className="p-4 font-medium text-slate-800">
-                    {enrollment.student_name}
-                  </td>
-                  <td className="p-4 text-slate-600">{enrollment.course_name}</td>
-                  <td className="p-4 text-slate-600">{enrollment.course_code}</td>
-                  <td className="p-4 text-slate-600">{enrollment.semester}</td>
-                  <td className="p-4 text-slate-600">{enrollment.session}</td>
-                  <td className="p-4">
-                    <RowActions
-                      onEdit={() => openEditModal(enrollment)}
-                      onDelete={() => setDeletingId(enrollment.enrollment_id)}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  {/* Course header - click to expand/collapse */}
+                  <button
+                    onClick={() => toggleCourse(group.course_id)}
+                    className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-paper transition-colors"
+                  >
+                    <span className="label-mono w-6 shrink-0 text-ink-mute">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+
+                    <span className="shrink-0 inline-flex items-center justify-center border border-line px-2.5 py-1.5 label-mono text-ink-soft">
+                      {group.course_code}
+                    </span>
+
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-display font-bold text-[1.0625rem] tracking-tight text-ink truncate">
+                        {group.course_name}
+                      </span>
+                      <span className="block text-[0.75rem] text-ink-soft mt-0.5">
+                        {group.department_name && (
+                          <>{group.department_name} · </>
+                        )}
+                        SEM {group.semesters.map((s) => String(s).padStart(2, "0")).join(", ")}
+                        {" · "}
+                        {group.sessions.join(", ")}
+                      </span>
+                    </span>
+
+                    <span className="shrink-0 flex items-center gap-1.5 label-mono text-ink-mute">
+                      <Users size={13} />
+                      {group.enrollments.length}
+                    </span>
+
+                    <span className="shrink-0 text-ink-mute">
+                      {isCollapsed ? (
+                        <ChevronRight size={17} />
+                      ) : (
+                        <ChevronDown size={17} />
+                      )}
+                    </span>
+                  </button>
+
+                  {/* Course body - enrolled students */}
+                  {!isCollapsed && (
+                    <div className="pb-4 sm:pl-[3.5rem]">
+                      <div className="overflow-x-auto border border-line mx-5 mb-1">
+                        <table className="w-full border-collapse">
+                          <thead>
+                            <tr className="bg-paper border-b border-line">
+                              <th className={TH}>ID</th>
+                              <th className={TH}>Student</th>
+                              <th className={TH}>Semester</th>
+                              <th className={TH}>Session</th>
+                              <th className={`${TH} text-center`}>Action</th>
+                            </tr>
+                          </thead>
+
+                          <tbody>
+                            {group.enrollments.map((enrollment) => (
+                              <tr
+                                key={enrollment.enrollment_id}
+                                className="border-b border-line last:border-b-0 hover:bg-paper transition-colors"
+                              >
+                                <td className={`${TD} font-mono text-ink-mute`}>
+                                  {String(enrollment.enrollment_id).padStart(3, "0")}
+                                </td>
+
+                                <td className="px-4 py-3 text-[0.8125rem] font-semibold text-ink whitespace-nowrap">
+                                  {enrollment.student_name}
+                                </td>
+
+                                <td className={`${TD} font-mono`}>
+                                  SEM {String(enrollment.semester).padStart(2, "0")}
+                                </td>
+
+                                <td className="px-4 py-3 whitespace-nowrap">
+                                  <span className="inline-block border border-line px-2 py-1 label-mono text-ink-soft">
+                                    {enrollment.session}
+                                  </span>
+                                </td>
+
+                                <td className="px-4 py-3">
+                                  <RowActions
+                                    onEdit={() => openEditModal(enrollment)}
+                                    onDelete={() => setDeletingId(enrollment.enrollment_id)}
+                                  />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 

@@ -3,9 +3,20 @@ import { useEffect, useState } from "react";
 import api from "../services/api";
 import { ShieldCheck, Trash2 } from "lucide-react";
 
+import PageHeader from "../components/PageHeader";
+import Loader from "../components/Loader";
+import EmptyState from "../components/EmptyState";
+import ConfirmDialog from "../components/ConfirmDialog";
+import { CONTROL_CLASS } from "../components/Field";
+
+const TH = "text-left px-5 py-3 label-mono whitespace-nowrap";
+const TD = "px-5 py-3.5 text-[0.8125rem] text-ink-soft whitespace-nowrap";
+
 function AdminPanel() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [deletingId, setDeletingId] = useState(null);
 
   const currentUser = JSON.parse(localStorage.getItem("user") || "null");
 
@@ -15,11 +26,12 @@ function AdminPanel() {
 
   const fetchUsers = async () => {
     try {
+      setError("");
       const res = await api.get("/users");
       setUsers(res.data.data);
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to load users");
+      setError(err.response?.data?.message || "Failed to load users");
     } finally {
       setLoading(false);
     }
@@ -35,14 +47,10 @@ function AdminPanel() {
     }
   };
 
-  const handleDeleteUser = async (userId) => {
-    if (!window.confirm("Are you sure you want to delete this user?")) {
-      return;
-    }
-
+  const handleDeleteUser = async () => {
     try {
-      await api.delete(`/users/${userId}`);
-      alert("User Deleted Successfully");
+      await api.delete(`/users/${deletingId}`);
+      setDeletingId(null);
       fetchUsers();
     } catch (err) {
       console.error(err);
@@ -50,92 +58,100 @@ function AdminPanel() {
     }
   };
 
-  const roleBadge = (role) => {
-    const styles = {
-      admin: "bg-purple-100 text-purple-700",
-      teacher: "bg-blue-100 text-blue-700",
-      student: "bg-slate-100 text-slate-600",
-    };
-
-    return (
-      <span
-        className={`px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${
-          styles[role] || "bg-slate-100 text-slate-600"
-        }`}
-      >
-        {role}
-      </span>
-    );
-  };
-
   return (
     <MainLayout>
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-slate-800">Admin Panel</h1>
-        <p className="text-slate-500 mt-1">Manage system users and roles</p>
-      </div>
+      <PageHeader
+        title="Admin Panel"
+        subtitle="System-wide user accounts and role assignment."
+      />
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="surface">
         {loading ? (
-          <p className="text-blue-600 p-6">Loading users...</p>
+          <Loader text="Loading users" />
+        ) : error ? (
+          <p className="text-[0.8125rem] text-danger px-5 py-6">{error}</p>
         ) : users.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-            <ShieldCheck size={40} className="mb-3" />
-            <p className="font-medium">No users found</p>
+          <div className="p-5">
+            <EmptyState icon={ShieldCheck} title="No users found" />
           </div>
         ) : (
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-100">
-              <tr>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">ID</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Username</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Email</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Role</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Change Role</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Action</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {users.map((u) => (
-                <tr
-                  key={u.user_id}
-                  className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors"
-                >
-                  <td className="p-4 text-slate-500">#{u.user_id}</td>
-                  <td className="p-4 font-medium text-slate-800">{u.username}</td>
-                  <td className="p-4 text-slate-600">{u.email}</td>
-                  <td className="p-4">{roleBadge(u.role)}</td>
-                  <td className="p-4">
-                    <select
-                      value={u.role}
-                      onChange={(e) => handleRoleChange(u.user_id, e.target.value)}
-                      className="border rounded-lg p-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="admin">Admin</option>
-                      <option value="teacher">Teacher</option>
-                      <option value="student">Student</option>
-                    </select>
-                  </td>
-                  <td className="p-4">
-                    {currentUser && String(currentUser.user_id) === String(u.user_id) ? (
-                      <span className="text-xs text-slate-400">You</span>
-                    ) : (
-                      <button
-                        onClick={() => handleDeleteUser(u.user_id)}
-                        className="flex items-center gap-1.5 text-red-600 hover:text-red-700 text-sm font-medium"
-                      >
-                        <Trash2 size={16} />
-                        Delete
-                      </button>
-                    )}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-paper border-b border-line">
+                  <th className={TH}>ID</th>
+                  <th className={TH}>Username</th>
+                  <th className={TH}>Email</th>
+                  <th className={TH}>Role</th>
+                  <th className={TH}>Change Role</th>
+                  <th className={`${TH} text-center`}>Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody>
+                {users.map((u) => (
+                  <tr
+                    key={u.user_id}
+                    className="border-b border-line last:border-b-0 hover:bg-paper transition-colors"
+                  >
+                    <td className={`${TD} font-mono text-ink-mute`}>
+                      {String(u.user_id).padStart(3, "0")}
+                    </td>
+
+                    <td className="px-5 py-3.5 text-[0.8125rem] font-semibold text-ink">
+                      {u.username}
+                    </td>
+
+                    <td className={TD}>{u.email}</td>
+
+                    <td className="px-5 py-3.5 whitespace-nowrap">
+                      <span className="inline-block border border-line px-2 py-1 label-mono text-ink-soft capitalize">
+                        {u.role}
+                      </span>
+                    </td>
+
+                    <td className="px-5 py-3.5">
+                      <select
+                        value={u.role}
+                        onChange={(e) => handleRoleChange(u.user_id, e.target.value)}
+                        className={`${CONTROL_CLASS} !mt-0 !py-1.5 w-36`}
+                      >
+                        <option value="admin">Admin</option>
+                        <option value="teacher">Teacher</option>
+                        <option value="student">Student</option>
+                      </select>
+                    </td>
+
+                    <td className="px-5 py-3.5 text-center">
+                      {currentUser && String(currentUser.user_id) === String(u.user_id) ? (
+                        <span className="label-mono">You</span>
+                      ) : (
+                        <button
+                          onClick={() => setDeletingId(u.user_id)}
+                          title="Delete"
+                          aria-label="Delete"
+                          className="p-1.5 border border-line text-ink-mute hover:border-danger hover:text-danger hover:bg-danger-soft transition-colors"
+                        >
+                          <Trash2 size={15} strokeWidth={1.9} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
+
+      {deletingId && (
+        <ConfirmDialog
+          title="Delete User"
+          message="Are you sure you want to delete this user account? This cannot be undone."
+          onCancel={() => setDeletingId(null)}
+          onConfirm={handleDeleteUser}
+        />
+      )}
     </MainLayout>
   );
 }

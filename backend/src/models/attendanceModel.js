@@ -11,7 +11,9 @@ const Attendance = {
                 a.enrollment_id,
                 en.student_id,
                 s.student_name,
+                c.course_id,
                 c.course_name,
+                c.course_code,
                 a.attendance_date,
                 a.status
             FROM attendance a
@@ -35,7 +37,9 @@ const Attendance = {
                 a.enrollment_id,
                 en.student_id,
                 s.student_name,
+                c.course_id,
                 c.course_name,
+                c.course_code,
                 a.attendance_date,
                 a.status
             FROM attendance a
@@ -49,6 +53,66 @@ const Attendance = {
         `;
 
         db.query(sql, [id], callback);
+    },
+
+    // =======================
+    // Get Attendance By Course (all students' attendance for one course)
+    // =======================
+    getAttendanceByCourse: (course_id, callback) => {
+
+        const sql = `
+            SELECT
+                a.attendance_id,
+                a.enrollment_id,
+                en.student_id,
+                s.student_name,
+                c.course_id,
+                c.course_name,
+                c.course_code,
+                a.attendance_date,
+                a.status
+            FROM attendance a
+            JOIN enrollments en
+                ON a.enrollment_id = en.enrollment_id
+            JOIN students s
+                ON en.student_id = s.student_id
+            JOIN courses c
+                ON en.course_id = c.course_id
+            WHERE c.course_id = ?
+            ORDER BY s.student_name, a.attendance_date
+        `;
+
+        db.query(sql, [course_id], callback);
+    },
+
+    // =======================
+    // Get Attendance By Student (all courses' attendance for one student)
+    // =======================
+    getAttendanceByStudent: (student_id, callback) => {
+
+        const sql = `
+            SELECT
+                a.attendance_id,
+                a.enrollment_id,
+                en.student_id,
+                s.student_name,
+                c.course_id,
+                c.course_name,
+                c.course_code,
+                a.attendance_date,
+                a.status
+            FROM attendance a
+            JOIN enrollments en
+                ON a.enrollment_id = en.enrollment_id
+            JOIN students s
+                ON en.student_id = s.student_id
+            JOIN courses c
+                ON en.course_id = c.course_id
+            WHERE s.student_id = ?
+            ORDER BY c.course_name, a.attendance_date
+        `;
+
+        db.query(sql, [student_id], callback);
     },
 
     // Create Attendance

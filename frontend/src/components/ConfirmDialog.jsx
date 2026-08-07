@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { AlertTriangle } from "lucide-react";
 
 // Shared delete / destructive-action confirmation.
@@ -8,30 +9,56 @@ function ConfirmDialog({
   onCancel,
   onConfirm,
 }) {
-  return (
-    <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50 p-4">
-      <div className="bg-white rounded-2xl p-6 w-96 shadow-xl">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-full bg-red-100 text-red-600">
-            <AlertTriangle size={20} />
-          </div>
+  // Escape cancels - never confirms
+  useEffect(() => {
+    const handleKey = (e) => {
+      if (e.key === "Escape") onCancel();
+    };
 
-          <h2 className="text-xl font-bold text-slate-800">{title}</h2>
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onCancel]);
+
+  return (
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      aria-label={title}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+      className="fixed inset-0 bg-ink/60 backdrop-blur-[2px] flex justify-center items-center z-50 p-4"
+    >
+      <div className="bg-panel border border-ink w-[26rem]">
+        {/* Danger rule across the top */}
+        <div className="h-[3px] bg-danger" />
+
+        <div className="px-6 py-6">
+          <div className="flex items-start gap-3.5">
+            <span className="w-9 h-9 shrink-0 flex items-center justify-center border border-danger text-danger bg-danger-soft">
+              <AlertTriangle size={17} strokeWidth={2} />
+            </span>
+
+            <div className="min-w-0">
+              <h2 className="font-display font-bold text-lg text-ink tracking-tight leading-snug">
+                {title}
+              </h2>
+
+              <p className="text-[0.8125rem] text-ink-soft mt-2 leading-relaxed">
+                {message}
+              </p>
+            </div>
+          </div>
         </div>
 
-        <p className="text-slate-500 mb-6">{message}</p>
-
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onCancel}
-            className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-lg font-medium transition-colors"
-          >
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-line bg-paper">
+          <button onClick={onCancel} className="btn-ghost">
             Cancel
           </button>
 
           <button
             onClick={onConfirm}
-            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+            className="btn-solid !bg-danger !border-danger hover:!bg-[#a81f16] hover:!border-[#a81f16]"
           >
             {confirmLabel}
           </button>

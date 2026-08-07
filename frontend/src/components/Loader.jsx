@@ -1,8 +1,18 @@
+// Indeterminate loading state - squared blocks instead of a spinner.
 function Loader({ text = "Loading..." }) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-      <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mb-3"></div>
-      <p className="text-sm font-medium">{text}</p>
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex flex-col items-center justify-center py-20"
+    >
+      <div className="flex gap-1.5 mb-4">
+        <span className="w-2.5 h-2.5 bg-ink animate-pulse" />
+        <span className="w-2.5 h-2.5 bg-ink animate-pulse [animation-delay:180ms]" />
+        <span className="w-2.5 h-2.5 bg-ink animate-pulse [animation-delay:360ms]" />
+      </div>
+
+      <p className="label-mono">{text}</p>
     </div>
   );
 }

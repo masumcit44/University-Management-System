@@ -8,6 +8,12 @@ const authMiddleware = require("../middlewares/authMiddleware");
 // GET
 router.get("/", authMiddleware, attendanceController.getAttendance);
 
+// GET By Course
+router.get("/course/:course_id", authMiddleware, attendanceController.getAttendanceByCourse);
+
+// GET By Student
+router.get("/student/:student_id", authMiddleware, attendanceController.getAttendanceByStudent);
+
 // GET By ID
 router.get("/:id", authMiddleware, attendanceController.getAttendanceById);
 

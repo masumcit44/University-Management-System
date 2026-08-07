@@ -25,12 +25,17 @@ const EMPTY_FORM = {
 // MySQL DATE columns arrive as ISO strings; <input type="date"> needs YYYY-MM-DD.
 const toDateInput = (value) => (value ? String(value).split("T")[0] : "");
 
+// Shared table cell styles - reused by every column
+const TH = "text-left px-5 py-2.5 label-mono whitespace-nowrap";
+const TD = "px-5 py-3 text-[0.8125rem] text-ink-soft whitespace-nowrap";
+
 function Students() {
   const [students, setStudents] = useState([]);
   const [departments, setDepartments] = useState([]);
+  const [semesterMap, setSemesterMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchId, setSearchId] = useState("");
 
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -41,6 +46,7 @@ function Students() {
   useEffect(() => {
     fetchStudents();
     fetchDepartments();
+    fetchSemesters();
   }, []);
 
   const fetchStudents = async () => {
@@ -67,11 +73,30 @@ function Students() {
     }
   };
 
+  // A student's "current semester" is the highest semester across their
+  // enrollments - enrollments carry semester, students don't.
+  const fetchSemesters = async () => {
+    try {
+      const res = await api.get("/enrollments");
+      const map = {};
+
+      res.data.data.forEach((en) => {
+        const sid = en.student_id;
+        const sem = Number(en.semester);
+
+        if (!map[sid] || sem > map[sid]) {
+          map[sid] = sem;
+        }
+      });
+
+      setSemesterMap(map);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   const openCreateModal = () => {
@@ -118,6 +143,7 @@ function Students() {
       setFormData(EMPTY_FORM);
 
       fetchStudents();
+      fetchSemesters();
     } catch (err) {
       console.error(err);
       alert(err.response?.data?.message || "Failed to save student");
@@ -135,102 +161,196 @@ function Students() {
     }
   };
 
+  // Search is ID-only - matches the raw id or the zero-padded display id
   const filteredStudents = students.filter((student) => {
-    const term = searchTerm.toLowerCase();
+    if (!searchId.trim()) return true;
+
+    const term = searchId.trim();
+    const paddedId = String(student.student_id).padStart(3, "0");
 
     return (
-      student.student_name.toLowerCase().includes(term) ||
-      student.student_email.toLowerCase().includes(term)
+      String(student.student_id).includes(term) || paddedId.includes(term)
     );
   });
+
+  // Department -> Semester -> [students], each level sorted for a stable layout
+  const departmentGroups = Object.values(
+    filteredStudents.reduce((acc, s) => {
+      const deptKey = s.department_name;
+
+      if (!acc[deptKey]) {
+        acc[deptKey] = { department_name: deptKey, students: [] };
+      }
+
+      acc[deptKey].students.push(s);
+      return acc;
+    }, {})
+  )
+    .map((dept) => {
+      const semesterGroups = Object.values(
+        dept.students.reduce((acc, s) => {
+          const sem = semesterMap[s.student_id];
+          const key = sem || "unassigned";
+
+          if (!acc[key]) {
+            acc[key] = { semester: sem || null, students: [] };
+          }
+
+          acc[key].students.push(s);
+          return acc;
+        }, {})
+      ).sort((a, b) => {
+        if (a.semester === null) return 1;
+        if (b.semester === null) return -1;
+        return a.semester - b.semester;
+      });
+
+      return { ...dept, semesterGroups };
+    })
+    .sort((a, b) => a.department_name.localeCompare(b.department_name));
 
   return (
     <MainLayout>
       <PageHeader
         title="Students"
-        subtitle="Enrolled students across departments"
+        subtitle="Every enrolled student across the ten departments of Eastern University."
         actionLabel="Add Student"
         onAction={openCreateModal}
       />
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-4 border-b border-slate-100">
-          <div className="relative w-80">
+      <div className="surface p-5 mb-6">
+        <Field label="Search by Student ID">
+          <div className="relative max-w-xs">
             <Search
-              size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              size={15}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-mute pointer-events-none"
             />
-
             <input
-              type="text"
-              placeholder="Search student or email..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="border border-slate-200 rounded-lg pl-9 pr-4 py-2 w-full outline-none focus:ring-2 focus:ring-blue-500"
+              type="number"
+              placeholder="e.g. 5"
+              value={searchId}
+              onChange={(e) => setSearchId(e.target.value)}
+              className={`${CONTROL_CLASS} !mt-0 !pl-9`}
             />
           </div>
-        </div>
+        </Field>
 
-        {loading ? (
-          <Loader text="Loading students..." />
-        ) : error ? (
-          <p className="text-red-600 p-6">{error}</p>
-        ) : filteredStudents.length === 0 ? (
+        <p className="label-mono mt-1">
+          {filteredStudents.length} of {students.length} records
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="surface">
+          <Loader text="Loading students" />
+        </div>
+      ) : error ? (
+        <div className="surface">
+          <p className="text-[0.8125rem] text-danger px-5 py-6">{error}</p>
+        </div>
+      ) : departmentGroups.length === 0 ? (
+        <div className="surface p-5">
           <EmptyState
             icon={Users}
             title={
               students.length === 0
                 ? "No students found"
-                : "No students match your search"
+                : "No student matches that ID"
             }
             hint={
               students.length === 0
                 ? "Add the first student to get started"
-                : "Try a different name or email"
+                : "Try a different student ID"
             }
           />
-        ) : (
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-100">
-              <tr>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">ID</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Name</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Email</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Phone</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Department</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Gender</th>
-                <th className="text-left p-4 text-sm font-semibold text-slate-500">Admitted</th>
-                <th className="text-center p-4 text-sm font-semibold text-slate-500">Action</th>
-              </tr>
-            </thead>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {departmentGroups.map((dept) => (
+            <div key={dept.department_name}>
+              {/* Department header */}
+              <div className="flex items-baseline justify-between gap-4 mb-3">
+                <h2 className="font-display font-bold text-lg text-ink tracking-tight">
+                  {dept.department_name}
+                </h2>
+                <p className="label-mono">
+                  {dept.students.length} student
+                  {dept.students.length > 1 ? "s" : ""}
+                </p>
+              </div>
 
-            <tbody>
-              {filteredStudents.map((student) => (
-                <tr
-                  key={student.student_id}
-                  className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors"
-                >
-                  <td className="p-4 text-slate-500">#{student.student_id}</td>
-                  <td className="p-4 font-medium text-slate-800">{student.student_name}</td>
-                  <td className="p-4 text-slate-600">{student.student_email}</td>
-                  <td className="p-4 text-slate-600">{student.student_phone}</td>
-                  <td className="p-4 text-slate-600">{student.department_name}</td>
-                  <td className="p-4 text-slate-600">{student.gender || "—"}</td>
-                  <td className="p-4 text-slate-600">
-                    {toDateInput(student.admission_date) || "—"}
-                  </td>
-                  <td className="p-4">
-                    <RowActions
-                      onEdit={() => openEditModal(student)}
-                      onDelete={() => setDeletingId(student.student_id)}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+              <div className="space-y-4">
+                {dept.semesterGroups.map((group) => (
+                  <div
+                    key={group.semester || "unassigned"}
+                    className="surface overflow-hidden"
+                  >
+                    <div className="px-5 py-2.5 border-b border-line bg-paper">
+                      <p className="label-mono">
+                        {group.semester
+                          ? `Semester ${group.semester}`
+                          : "Semester — Unassigned"}
+                      </p>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr className="border-b border-line">
+                            <th className={TH}>ID</th>
+                            <th className={TH}>Name</th>
+                            <th className={TH}>Email</th>
+                            <th className={TH}>Phone</th>
+                            <th className={TH}>Gender</th>
+                            <th className={TH}>Admitted</th>
+                            <th className={`${TH} text-center`}>Action</th>
+                          </tr>
+                        </thead>
+
+                        <tbody>
+                          {group.students.map((student) => (
+                            <tr
+                              key={student.student_id}
+                              className="border-b border-line last:border-b-0 hover:bg-paper transition-colors"
+                            >
+                              <td className={`${TD} font-mono text-ink-mute`}>
+                                {String(student.student_id).padStart(3, "0")}
+                              </td>
+
+                              <td className="px-5 py-3 text-[0.8125rem] font-semibold text-ink whitespace-nowrap">
+                                {student.student_name}
+                              </td>
+
+                              <td className={TD}>{student.student_email}</td>
+
+                              <td className={`${TD} font-mono`}>
+                                {student.student_phone}
+                              </td>
+
+                              <td className={TD}>{student.gender || "—"}</td>
+
+                              <td className={`${TD} font-mono`}>
+                                {toDateInput(student.admission_date) || "—"}
+                              </td>
+
+                              <td className="px-5 py-3 text-center">
+                                <RowActions
+                                  onEdit={() => openEditModal(student)}
+                                  onDelete={() => setDeletingId(student.student_id)}
+                                />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {showModal && (
         <Modal
