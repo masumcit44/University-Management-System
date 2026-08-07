@@ -2,17 +2,21 @@ const express = require("express");
 const router = express.Router();
 
 const departmentController = require("../controllers/departmentController");
+const authMiddleware = require("../middlewares/authMiddleware");
 
 // Get All
-router.get("/", departmentController.getDepartments);
+router.get("/", authMiddleware, departmentController.getDepartments);
+
+// Get By ID
+router.get("/:id", authMiddleware, departmentController.getDepartmentById);
 
 // Create
-router.post("/", departmentController.createDepartment);
+router.post("/", authMiddleware, departmentController.createDepartment);
 
 // Update
-router.put("/:id", departmentController.updateDepartment);
+router.put("/:id", authMiddleware, departmentController.updateDepartment);
 
 // Delete
-router.delete("/:id", departmentController.deleteDepartment);
+router.delete("/:id", authMiddleware, departmentController.deleteDepartment);
 
 module.exports = router;

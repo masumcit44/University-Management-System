@@ -11,20 +11,29 @@ const Department = {
   },
 
   // =======================
+  // Get Department By ID
+  // =======================
+  getDepartmentById: (id, callback) => {
+    const sql = "SELECT * FROM departments WHERE department_id = ?";
+    db.query(sql, [id], callback);
+  },
+
+  // =======================
   // Create Department
   // =======================
   createDepartment: (
     department_name,
     department_code,
+    department_head,
     callback
   ) => {
 
     const sql =
-      "INSERT INTO departments (department_name, department_code) VALUES (?, ?)";
+      "INSERT INTO departments (department_name, department_code, department_head) VALUES (?, ?, ?)";
 
     db.query(
       sql,
-      [department_name, department_code],
+      [department_name, department_code, department_head],
       callback
     );
 
@@ -37,15 +46,16 @@ const Department = {
     id,
     department_name,
     department_code,
+    department_head,
     callback
   ) => {
 
     const sql =
-      "UPDATE departments SET department_name = ?, department_code = ? WHERE department_id = ?";
+      "UPDATE departments SET department_name = ?, department_code = ?, department_head = ? WHERE department_id = ?";
 
     db.query(
       sql,
-      [department_name, department_code, id],
+      [department_name, department_code, department_head, id],
       callback
     );
 

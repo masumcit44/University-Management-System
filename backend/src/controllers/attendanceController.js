@@ -21,20 +21,54 @@ exports.getAttendance = (req, res) => {
 
 };
 
+// GET Attendance By ID
+exports.getAttendanceById = (req, res) => {
+
+    const { id } = req.params;
+
+    Attendance.getAttendanceById(id, (err, results) => {
+
+        if (err) {
+            return res.status(500).json({
+                success: false,
+                message: err.message
+            });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Attendance Record Not Found"
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: results[0]
+        });
+
+    });
+
+};
 
 // CREATE Attendance
 exports.createAttendance = (req, res) => {
 
     const {
-        student_id,
-        course_id,
+        enrollment_id,
         attendance_date,
         status
     } = req.body;
 
+    if (!enrollment_id || !attendance_date || !status) {
+        return res.status(400).json({
+            success: false,
+            message: "All fields are required"
+        });
+    }
+
     Attendance.createAttendance(
-        student_id,
-        course_id,
+        enrollment_id,
         attendance_date,
         status,
         (err, result) => {
@@ -53,5 +87,70 @@ exports.createAttendance = (req, res) => {
 
         }
     );
+
+};
+
+// UPDATE Attendance
+exports.updateAttendance = (req, res) => {
+
+    const { id } = req.params;
+
+    const {
+        enrollment_id,
+        attendance_date,
+        status
+    } = req.body;
+
+    if (!enrollment_id || !attendance_date || !status) {
+        return res.status(400).json({
+            success: false,
+            message: "All fields are required"
+        });
+    }
+
+    Attendance.updateAttendance(
+        id,
+        enrollment_id,
+        attendance_date,
+        status,
+        (err) => {
+
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    message: err.message
+                });
+            }
+
+            res.status(200).json({
+                success: true,
+                message: "Attendance Updated Successfully"
+            });
+
+        }
+    );
+
+};
+
+// DELETE Attendance
+exports.deleteAttendance = (req, res) => {
+
+    const { id } = req.params;
+
+    Attendance.deleteAttendance(id, (err) => {
+
+        if (err) {
+            return res.status(500).json({
+                success: false,
+                message: err.message
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Attendance Deleted Successfully"
+        });
+
+    });
 
 };

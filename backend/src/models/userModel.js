@@ -46,6 +46,45 @@ const User = {
 
         db.query(sql, [email], callback);
 
+    },
+
+    // Get All Users (Admin Panel)
+    getAllUsers: (callback) => {
+
+        const sql = `
+            SELECT
+                user_id,
+                username,
+                email,
+                role,
+                created_at
+            FROM users
+            ORDER BY created_at DESC
+        `;
+
+        db.query(sql, callback);
+
+    },
+
+    // Update User Role (Admin Panel)
+    updateUserRole: (id, role, callback) => {
+
+        const sql = `
+            UPDATE users
+            SET role = ?
+            WHERE user_id = ?
+        `;
+
+        db.query(sql, [role, id], callback);
+
+    },
+
+    // Delete User (Admin Panel)
+    deleteUser: (id, callback) => {
+
+        const sql = "DELETE FROM users WHERE user_id = ?";
+        db.query(sql, [id], callback);
+
     }
 
 };

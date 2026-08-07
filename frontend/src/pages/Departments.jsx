@@ -1,17 +1,32 @@
 import MainLayout from "../layouts/MainLayout";
 import { useEffect, useState } from "react";
 import api from "../services/api";
+import { Building2, Search } from "lucide-react";
+
+import PageHeader from "../components/PageHeader";
+import Loader from "../components/Loader";
+import EmptyState from "../components/EmptyState";
+import Modal from "../components/Modal";
+import ConfirmDialog from "../components/ConfirmDialog";
+import RowActions from "../components/RowActions";
+import Field, { CONTROL_CLASS } from "../components/Field";
+
+const EMPTY_FORM = {
+  department_name: "",
+  department_code: "",
+  department_head: "",
+};
 
 function Departments() {
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
-  const [formData, setFormData] = useState({
-    department_name: "",
-    department_code: "",
-  });
+  const [formData, setFormData] = useState(EMPTY_FORM);
 
   useEffect(() => {
     fetchDepartments();
@@ -36,186 +51,201 @@ function Departments() {
     });
   };
 
-  const handleCreateDepartment = async () => {
-    try {
-      await api.post("/departments", formData);
+  const openCreateModal = () => {
+    setFormData(EMPTY_FORM);
+    setEditingId(null);
+    setShowModal(true);
+  };
 
-      alert("Department Created Successfully");
+  const openEditModal = (department) => {
+    setFormData({
+      department_name: department.department_name,
+      department_code: department.department_code,
+      department_head: department.department_head || "",
+    });
+    setEditingId(department.department_id);
+    setShowModal(true);
+  };
+
+  const handleSave = async () => {
+    if (!formData.department_name || !formData.department_code) {
+      alert("Department name and code are required");
+      return;
+    }
+
+    try {
+      if (editingId) {
+        await api.put(`/departments/${editingId}`, formData);
+      } else {
+        await api.post("/departments", formData);
+      }
 
       setShowModal(false);
-
-      setFormData({
-        department_name: "",
-        department_code: "",
-      });
+      setEditingId(null);
+      setFormData(EMPTY_FORM);
 
       fetchDepartments();
     } catch (err) {
       console.error(err);
+      alert(err.response?.data?.message || "Failed to save department");
+    }
+  };
 
+  const handleDelete = async () => {
+    try {
+      await api.delete(`/departments/${deletingId}`);
+      setDeletingId(null);
+      fetchDepartments();
+    } catch (err) {
+      console.error(err);
       alert(
-        err.response?.data?.message || "Failed to create department"
+        err.response?.data?.message ||
+          "Failed to delete department. It may still have students, teachers or courses attached."
       );
     }
   };
 
-  return (    <MainLayout>
-      <div className="flex justify-between items-center mb-8">
+  const filteredDepartments = departments.filter((department) => {
+    const term = searchTerm.toLowerCase();
 
-        <h1 className="text-4xl font-bold">
-          Departments
-        </h1>
+    return (
+      department.department_name.toLowerCase().includes(term) ||
+      department.department_code.toLowerCase().includes(term)
+    );
+  });
 
-        <button
-          onClick={() => setShowModal(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg"
-        >
-          + Add Department
-        </button>
+  return (
+    <MainLayout>
+      <PageHeader
+        title="Departments"
+        subtitle="Academic departments of the university"
+        actionLabel="Add Department"
+        onAction={openCreateModal}
+      />
 
-      </div>
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="p-4 border-b border-slate-100">
+          <div className="relative w-80">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            />
 
-      <div className="bg-white rounded-xl shadow p-6">
-
-        <input
-          type="text"
-          placeholder="Search Department..."
-          className="border rounded-lg px-4 py-2 mb-5 w-80"
-        />
+            <input
+              type="text"
+              placeholder="Search department or code..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="border border-slate-200 rounded-lg pl-9 pr-4 py-2 w-full outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
 
         {loading ? (
-          <p className="text-blue-600">
-            Loading Departments...
-          </p>
+          <Loader text="Loading departments..." />
+        ) : filteredDepartments.length === 0 ? (
+          <EmptyState
+            icon={Building2}
+            title={
+              departments.length === 0
+                ? "No departments found"
+                : "No departments match your search"
+            }
+            hint={
+              departments.length === 0
+                ? "Add the first department to get started"
+                : "Try a different name or code"
+            }
+          />
         ) : (
           <table className="w-full">
-
-            <thead className="bg-gray-100">
-
+            <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
-                <th className="text-left p-3">ID</th>
-                <th className="text-left p-3">Department</th>
-                <th className="text-left p-3">Code</th>
-                <th className="text-center p-3">Action</th>
+                <th className="text-left p-4 text-sm font-semibold text-slate-500">ID</th>
+                <th className="text-left p-4 text-sm font-semibold text-slate-500">Department</th>
+                <th className="text-left p-4 text-sm font-semibold text-slate-500">Code</th>
+                <th className="text-left p-4 text-sm font-semibold text-slate-500">Head</th>
+                <th className="text-center p-4 text-sm font-semibold text-slate-500">Action</th>
               </tr>
-
             </thead>
 
             <tbody>
-
-              {departments.length > 0 ? (
-
-                departments.map((department) => (
-
-                  <tr
-                    key={department.department_id}
-                    className="border-b"
-                  >
-
-                    <td className="p-3">
-                      {department.department_id}
-                    </td>
-
-                    <td className="p-3">
-                      {department.department_name}
-                    </td>
-
-                    <td className="p-3">
-                      {department.department_code}
-                    </td>
-
-                    <td className="text-center p-3">
-
-                      <button className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded mr-2">
-                        Edit
-                      </button>
-
-                      <button className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded">
-                        Delete
-                      </button>
-
-                    </td>
-
-                  </tr>
-
-                ))
-
-              ) : (
-
-                <tr>
-
-                  <td
-                    colSpan="4"
-                    className="text-center p-5 text-gray-500"
-                  >
-                    No Departments Found
+              {filteredDepartments.map((department) => (
+                <tr
+                  key={department.department_id}
+                  className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors"
+                >
+                  <td className="p-4 text-slate-500">#{department.department_id}</td>
+                  <td className="p-4 font-medium text-slate-800">
+                    {department.department_name}
                   </td>
-
+                  <td className="p-4 text-slate-600">{department.department_code}</td>
+                  <td className="p-4 text-slate-600">
+                    {department.department_head || "—"}
+                  </td>
+                  <td className="p-4">
+                    <RowActions
+                      onEdit={() => openEditModal(department)}
+                      onDelete={() => setDeletingId(department.department_id)}
+                    />
+                  </td>
                 </tr>
-
-              )}
-
+              ))}
             </tbody>
-
           </table>
         )}
-
       </div>
 
-      {/* Modal */}
-
       {showModal && (
-
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center">
-
-          <div className="bg-white rounded-xl p-6 w-96">
-
-            <h2 className="text-2xl font-bold mb-5">
-              Add Department
-            </h2>
-
+        <Modal
+          title={editingId ? "Edit Department" : "Add Department"}
+          onClose={() => setShowModal(false)}
+          onSave={handleSave}
+          saveLabel={editingId ? "Update" : "Save"}
+        >
+          <Field label="Department Name">
             <input
               type="text"
               name="department_name"
-              placeholder="Department Name"
+              placeholder="e.g. Computer Science and Engineering"
               value={formData.department_name}
               onChange={handleChange}
-              className="border w-full rounded-lg p-2 mb-4"
+              className={CONTROL_CLASS}
             />
+          </Field>
 
+          <Field label="Department Code">
             <input
               type="text"
               name="department_code"
-              placeholder="Department Code"
+              placeholder="e.g. CSE"
               value={formData.department_code}
               onChange={handleChange}
-              className="border w-full rounded-lg p-2 mb-5"
+              className={CONTROL_CLASS}
             />
+          </Field>
 
-            <div className="flex justify-end gap-3">
-
-              <button
-                onClick={() => setShowModal(false)}
-                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded"
-              >
-                Cancel
-              </button>
-
-              <button
-                onClick={handleCreateDepartment}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-              >
-                Save
-              </button>
-
-            </div>
-
-          </div>
-
-        </div>
-
+          <Field label="Department Head (optional)">
+            <input
+              type="text"
+              name="department_head"
+              placeholder="e.g. Dr. Rahim Uddin"
+              value={formData.department_head}
+              onChange={handleChange}
+              className={CONTROL_CLASS}
+            />
+          </Field>
+        </Modal>
       )}
 
+      {deletingId && (
+        <ConfirmDialog
+          title="Delete Department"
+          message="Are you sure you want to delete this department? Students, teachers and courses linked to it will block the deletion."
+          onCancel={() => setDeletingId(null)}
+          onConfirm={handleDelete}
+        />
+      )}
     </MainLayout>
   );
 }

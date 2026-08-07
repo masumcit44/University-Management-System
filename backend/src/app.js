@@ -11,6 +11,11 @@ const resultRoutes = require("./routes/resultRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const cgpaRoutes = require("./routes/cgpaRoutes");
 const authRoutes = require("./routes/authRoutes");
+const examRoutes = require("./routes/examRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
+const timetableRoutes = require("./routes/timetableRoutes");
+const userRoutes = require("./routes/userRoutes");
+
 const app = express();
 
 app.use(cors());
@@ -30,5 +35,9 @@ app.use("/api/results", resultRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/cgpa", cgpaRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/exams", examRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/timetable", timetableRoutes);
+app.use("/api/users", userRoutes);
 
 module.exports = app;

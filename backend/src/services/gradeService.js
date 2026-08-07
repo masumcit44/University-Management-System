@@ -1,16 +1,10 @@
-// Calculate Total Marks
-exports.calculateTotalMarks = (
-    mid_marks,
-    assignment_marks,
-    quiz_marks,
-    final_marks
-) => {
+// =======================
+// Calculate Percentage
+// =======================
+exports.calculatePercentage = (marks_obtained, total_marks) => {
 
     return (
-        Number(mid_marks) +
-        Number(assignment_marks) +
-        Number(quiz_marks) +
-        Number(final_marks)
+        (Number(marks_obtained) / Number(total_marks)) * 100
     );
 
 };

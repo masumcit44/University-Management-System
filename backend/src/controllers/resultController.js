@@ -1,7 +1,7 @@
 const Result = require("../models/resultModel");
 
 const {
-    calculateTotalMarks,
+    calculatePercentage,
     calculateGrade
 } = require("../services/gradeService");
 
@@ -28,77 +28,275 @@ exports.getResults = (req, res) => {
 };
 
 
+// =======================
+// GET Result By ID
+// =======================
+exports.getResultById = (req, res) => {
+
+    const { id } = req.params;
+
+    Result.getResultById(id, (err, results) => {
+
+        if (err) {
+            return res.status(500).json({
+                success: false,
+                message: err.message
+            });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Result Not Found"
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: results[0]
+        });
+
+    });
+
+};
+
+
 // CREATE Result
 exports.createResult = (req, res) => {
 
     const {
 
-        student_id,
-        course_id,
-
-        mid_marks,
-        assignment_marks,
-        quiz_marks,
-        final_marks
+        enrollment_id,
+        exam_id,
+        marks_obtained
 
     } = req.body;
 
 
-    // Business Logic
-    const total_marks = calculateTotalMarks(
+    // Get Exam's Total Marks First (needed to calculate percentage)
+    Result.getExamTotalMarks(exam_id, (err, examResults) => {
 
-        mid_marks,
-        assignment_marks,
-        quiz_marks,
-        final_marks
+        if (err) {
 
-    );
+            return res.status(500).json({
 
-
-    const {
-
-        grade,
-        grade_point
-
-    } = calculateGrade(total_marks);
-
-
-    Result.createResult(
-
-        student_id,
-        course_id,
-
-        mid_marks,
-        assignment_marks,
-        quiz_marks,
-        final_marks,
-
-        total_marks,
-        grade,
-        grade_point,
-
-        (err, result) => {
-
-            if (err) {
-
-                return res.status(500).json({
-
-                    success: false,
-                    message: err.message
-
-                });
-
-            }
-
-            res.status(201).json({
-
-                success: true,
-                message: "Result Created Successfully"
+                success: false,
+                message: err.message
 
             });
 
         }
 
-    );
+        if (examResults.length === 0) {
+
+            return res.status(404).json({
+
+                success: false,
+                message: "Exam Not Found"
+
+            });
+
+        }
+
+        const total_marks = examResults[0].total_marks;
+
+        if (Number(marks_obtained) > Number(total_marks)) {
+
+            return res.status(400).json({
+
+                success: false,
+                message: "Marks Obtained Cannot Exceed Total Marks"
+
+            });
+
+        }
+
+
+        // Business Logic
+        const percentage = calculatePercentage(
+            marks_obtained,
+            total_marks
+        );
+
+        const {
+
+            grade,
+            grade_point
+
+        } = calculateGrade(percentage);
+
+
+        Result.createResult(
+
+            enrollment_id,
+            exam_id,
+
+            marks_obtained,
+            grade,
+            grade_point,
+
+            (err, result) => {
+
+                if (err) {
+
+                    return res.status(500).json({
+
+                        success: false,
+                        message: err.message
+
+                    });
+
+                }
+
+                res.status(201).json({
+
+                    success: true,
+                    message: "Result Created Successfully"
+
+                });
+
+            }
+
+        );
+
+    });
+
+};
+
+
+// =======================
+// UPDATE Result
+// =======================
+exports.updateResult = (req, res) => {
+
+    const { id } = req.params;
+
+    const {
+
+        enrollment_id,
+        exam_id,
+        marks_obtained
+
+    } = req.body;
+
+
+    Result.getExamTotalMarks(exam_id, (err, examResults) => {
+
+        if (err) {
+
+            return res.status(500).json({
+
+                success: false,
+                message: err.message
+
+            });
+
+        }
+
+        if (examResults.length === 0) {
+
+            return res.status(404).json({
+
+                success: false,
+                message: "Exam Not Found"
+
+            });
+
+        }
+
+        const total_marks = examResults[0].total_marks;
+
+        if (Number(marks_obtained) > Number(total_marks)) {
+
+            return res.status(400).json({
+
+                success: false,
+                message: "Marks Obtained Cannot Exceed Total Marks"
+
+            });
+
+        }
+
+        const percentage = calculatePercentage(
+            marks_obtained,
+            total_marks
+        );
+
+        const {
+
+            grade,
+            grade_point
+
+        } = calculateGrade(percentage);
+
+
+        Result.updateResult(
+
+            id,
+
+            enrollment_id,
+            exam_id,
+
+            marks_obtained,
+            grade,
+            grade_point,
+
+            (err) => {
+
+                if (err) {
+
+                    return res.status(500).json({
+
+                        success: false,
+                        message: err.message
+
+                    });
+
+                }
+
+                res.status(200).json({
+
+                    success: true,
+                    message: "Result Updated Successfully"
+
+                });
+
+            }
+
+        );
+
+    });
+
+};
+
+
+// =======================
+// DELETE Result
+// =======================
+exports.deleteResult = (req, res) => {
+
+    const { id } = req.params;
+
+    Result.deleteResult(id, (err) => {
+
+        if (err) {
+
+            return res.status(500).json({
+
+                success: false,
+                message: err.message
+
+            });
+
+        }
+
+        res.status(200).json({
+
+            success: true,
+            message: "Result Deleted Successfully"
+
+        });
+
+    });
 
 };

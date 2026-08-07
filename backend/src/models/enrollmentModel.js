@@ -2,11 +2,14 @@ const db = require("../config/db");
 
 const Enrollment = {
 
+    // Get All Enrollments
     getEnrollments: (callback) => {
 
         const sql = `
             SELECT
                 e.enrollment_id,
+                e.student_id,
+                e.course_id,
                 s.student_name,
                 c.course_name,
                 c.course_code,
@@ -22,6 +25,31 @@ const Enrollment = {
         db.query(sql, callback);
     },
 
+    // Get Enrollment By ID
+    getEnrollmentById: (id, callback) => {
+
+        const sql = `
+            SELECT
+                e.enrollment_id,
+                e.student_id,
+                e.course_id,
+                s.student_name,
+                c.course_name,
+                c.course_code,
+                e.semester,
+                e.session
+            FROM enrollments e
+            JOIN students s
+                ON e.student_id = s.student_id
+            JOIN courses c
+                ON e.course_id = c.course_id
+            WHERE e.enrollment_id = ?
+        `;
+
+        db.query(sql, [id], callback);
+    },
+
+    // Create Enrollment
     createEnrollment: (
         student_id,
         course_id,
@@ -38,14 +66,38 @@ const Enrollment = {
 
         db.query(
             sql,
-            [
-                student_id,
-                course_id,
-                semester,
-                session
-            ],
+            [student_id, course_id, semester, session],
             callback
         );
+    },
+
+    // Update Enrollment
+    updateEnrollment: (
+        id,
+        student_id,
+        course_id,
+        semester,
+        session,
+        callback
+    ) => {
+
+        const sql = `
+            UPDATE enrollments
+            SET student_id = ?, course_id = ?, semester = ?, session = ?
+            WHERE enrollment_id = ?
+        `;
+
+        db.query(
+            sql,
+            [student_id, course_id, semester, session, id],
+            callback
+        );
+    },
+
+    // Delete Enrollment
+    deleteEnrollment: (id, callback) => {
+        const sql = "DELETE FROM enrollments WHERE enrollment_id = ?";
+        db.query(sql, [id], callback);
     }
 
 };

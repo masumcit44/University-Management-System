@@ -3,13 +3,21 @@ const express = require("express");
 const router = express.Router();
 
 const attendanceController = require("../controllers/attendanceController");
-
+const authMiddleware = require("../middlewares/authMiddleware");
 
 // GET
-router.get("/", attendanceController.getAttendance);
+router.get("/", authMiddleware, attendanceController.getAttendance);
+
+// GET By ID
+router.get("/:id", authMiddleware, attendanceController.getAttendanceById);
 
 // POST
-router.post("/", attendanceController.createAttendance);
+router.post("/", authMiddleware, attendanceController.createAttendance);
 
+// UPDATE
+router.put("/:id", authMiddleware, attendanceController.updateAttendance);
+
+// DELETE
+router.delete("/:id", authMiddleware, attendanceController.deleteAttendance);
 
 module.exports = router;

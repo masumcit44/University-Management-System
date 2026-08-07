@@ -10,6 +10,12 @@ const Teacher = {
         t.teacher_name,
         t.teacher_email,
         t.teacher_phone,
+        t.designation,
+        t.gender,
+        t.address,
+        t.dob,
+        t.joining_date,
+        t.department_id,
         d.department_name
       FROM teachers t
       JOIN departments d
@@ -19,26 +25,110 @@ const Teacher = {
     db.query(sql, callback);
   },
 
+  // Get Teacher By ID
+  getTeacherById: (id, callback) => {
+    const sql = `
+      SELECT
+        t.teacher_id,
+        t.teacher_name,
+        t.teacher_email,
+        t.teacher_phone,
+        t.designation,
+        t.gender,
+        t.address,
+        t.dob,
+        t.joining_date,
+        t.department_id,
+        d.department_name
+      FROM teachers t
+      JOIN departments d
+      ON t.department_id = d.department_id
+      WHERE t.teacher_id = ?
+    `;
+
+    db.query(sql, [id], callback);
+  },
+
   // Create Teacher
   createTeacher: (
     teacher_name,
     teacher_email,
     teacher_phone,
     department_id,
+    designation,
+    gender,
+    address,
+    dob,
+    joining_date,
     callback
   ) => {
 
     const sql = `
       INSERT INTO teachers
-      (teacher_name, teacher_email, teacher_phone, department_id)
-      VALUES (?, ?, ?, ?)
+      (teacher_name, teacher_email, teacher_phone, department_id, designation, gender, address, dob, joining_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     db.query(
       sql,
-      [teacher_name, teacher_email, teacher_phone, department_id],
+      [
+        teacher_name,
+        teacher_email,
+        teacher_phone,
+        department_id,
+        designation,
+        gender,
+        address,
+        dob,
+        joining_date
+      ],
       callback
     );
+  },
+
+  // Update Teacher
+  updateTeacher: (
+    id,
+    teacher_name,
+    teacher_email,
+    teacher_phone,
+    department_id,
+    designation,
+    gender,
+    address,
+    dob,
+    joining_date,
+    callback
+  ) => {
+
+    const sql = `
+      UPDATE teachers
+      SET teacher_name = ?, teacher_email = ?, teacher_phone = ?, department_id = ?, designation = ?, gender = ?, address = ?, dob = ?, joining_date = ?
+      WHERE teacher_id = ?
+    `;
+
+    db.query(
+      sql,
+      [
+        teacher_name,
+        teacher_email,
+        teacher_phone,
+        department_id,
+        designation,
+        gender,
+        address,
+        dob,
+        joining_date,
+        id
+      ],
+      callback
+    );
+  },
+
+  // Delete Teacher
+  deleteTeacher: (id, callback) => {
+    const sql = "DELETE FROM teachers WHERE teacher_id = ?";
+    db.query(sql, [id], callback);
   }
 
 };
