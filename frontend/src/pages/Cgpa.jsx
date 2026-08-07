@@ -12,9 +12,11 @@ const SCALE_MAX = 4;
 function Cgpa() {
   const [students, setStudents] = useState([]);
   const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [studentIdInput, setStudentIdInput] = useState("");
   const [cgpaData, setCgpaData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     fetchStudents();
@@ -29,34 +31,71 @@ function Cgpa() {
     }
   };
 
+  const handleStudentSelect = (event) => {
+    const studentId = event.target.value;
+
+    setSelectedStudentId(studentId);
+    setStudentIdInput(studentId);
+    setCgpaData(null);
+    setNotFound(false);
+    setErrorMessage("");
+  };
+
+  const handleStudentIdChange = (event) => {
+    const studentId = event.target.value;
+
+    setStudentIdInput(studentId);
+    setSelectedStudentId(studentId);
+    setCgpaData(null);
+    setNotFound(false);
+    setErrorMessage("");
+  };
+
   const handleCheckCgpa = async () => {
-    if (!selectedStudentId) {
-      alert("Please select a student");
+    const studentId = studentIdInput.trim() || selectedStudentId;
+
+    if (!studentId) {
+      setErrorMessage("Select a student or enter a Student ID first.");
       return;
     }
 
     setLoading(true);
     setCgpaData(null);
     setNotFound(false);
+    setErrorMessage("");
 
     try {
-      const res = await api.get(`/cgpa/${selectedStudentId}`);
+      const res = await api.get(`/cgpa/${encodeURIComponent(studentId)}`);
       setCgpaData(res.data.data);
     } catch (err) {
       console.error(err);
+
       if (err.response?.status === 404) {
         setNotFound(true);
       } else {
-        alert(err.response?.data?.message || "Failed to fetch CGPA");
+        setErrorMessage(
+          err.response?.data?.message || "Failed to fetch CGPA"
+        );
       }
     } finally {
       setLoading(false);
     }
   };
 
-  // Position of the CGPA on the 0.00 - 4.00 ruler, clamped to the track.
+  const handleStudentIdKeyDown = (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      handleCheckCgpa();
+    }
+  };
+
+  // Position of the CGPA on the 0.00 - 4.00 ruler.
   const cgpaValue = cgpaData ? Number(cgpaData.cgpa) : 0;
-  const markerLeft = Math.min(100, Math.max(0, (cgpaValue / SCALE_MAX) * 100));
+
+  const markerLeft = Math.min(
+    100,
+    Math.max(0, (cgpaValue / SCALE_MAX) * 100)
+  );
 
   return (
     <MainLayout>
@@ -75,27 +114,60 @@ function Cgpa() {
           <select
             id="cgpa-student"
             value={selectedStudentId}
-            onChange={(e) => setSelectedStudentId(e.target.value)}
+            onChange={handleStudentSelect}
             className="control mt-1.5"
           >
             <option value="">Select Student</option>
-            {students.map((s) => (
-              <option key={s.student_id} value={s.student_id}>
-                {s.student_name}
+
+            {students.map((student) => (
+              <option
+                key={student.student_id}
+                value={student.student_id}
+              >
+                {student.student_name}
               </option>
             ))}
           </select>
 
+          <div className="flex items-center gap-3 my-4">
+            <span className="h-px flex-1 bg-line" />
+            <span className="label-mono text-ink-mute">or</span>
+            <span className="h-px flex-1 bg-line" />
+          </div>
+
+          <label className="label-mono block" htmlFor="cgpa-student-id">
+            Student ID
+          </label>
+
+          <input
+            id="cgpa-student-id"
+            type="text"
+            value={studentIdInput}
+            onChange={handleStudentIdChange}
+            onKeyDown={handleStudentIdKeyDown}
+            placeholder="Enter Student ID"
+            className="control mt-1.5"
+            autoComplete="off"
+          />
+
           <button
             onClick={handleCheckCgpa}
-            className="btn-solid w-full mt-4 justify-center inline-flex items-center gap-2"
+            disabled={loading}
+            className="btn-solid w-full mt-4 justify-center inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Search size={15} />
-            Calculate
+            {loading ? "Calculating..." : "Calculate"}
           </button>
 
+          {errorMessage && (
+            <p className="text-xs text-red-700 mt-3" role="alert">
+              {errorMessage}
+            </p>
+          )}
+
           <p className="text-xs text-ink-mute mt-4 border-l-2 border-line pl-3">
-            Only results linked to a <span className="text-ink">Final</span> exam
+            Select a student from the list or enter their Student ID. Only
+            results linked to a <span className="text-ink">Final</span> exam
             contribute to the average.
           </p>
         </div>
@@ -114,7 +186,9 @@ function Cgpa() {
             </div>
           ) : cgpaData ? (
             <div className="p-8">
-              <p className="label-mono">Cumulative grade point average</p>
+              <p className="label-mono">
+                Cumulative grade point average
+              </p>
 
               <p className="text-2xl font-semibold text-ink mt-1">
                 {cgpaData.student_name}
@@ -125,7 +199,9 @@ function Cgpa() {
                   {cgpaValue.toFixed(2)}
                 </span>
 
-                <span className="label-mono pb-3">out of 4.00</span>
+                <span className="label-mono pb-3">
+                  out of 4.00
+                </span>
               </div>
 
               {/* Ruler */}
@@ -152,9 +228,10 @@ function Cgpa() {
           ) : (
             <div className="p-8">
               <p className="label-mono">Awaiting selection</p>
+
               <p className="text-sm text-ink-soft mt-2 max-w-sm">
-                Pick a student on the left and press Calculate to read their
-                cumulative grade point average.
+                Select a student or enter a Student ID, then press Calculate
+                to read their cumulative grade point average.
               </p>
             </div>
           )}
