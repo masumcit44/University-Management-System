@@ -14,6 +14,7 @@ import Results from "../pages/Results";
 import Cgpa from "../pages/Cgpa";
 import Exam from "../pages/Exam";
 import Reports from "../pages/Reports";
+import Prediction from "../pages/Prediction";
 import AdminPanel from "../pages/AdminPanel";
 
 import ProtectedRoute from "./ProtectedRoute";
@@ -120,6 +121,15 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <Reports />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/prediction"
+          element={
+            <ProtectedRoute>
+              <Prediction />
             </ProtectedRoute>
           }
         />

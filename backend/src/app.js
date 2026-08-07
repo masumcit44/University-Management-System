@@ -15,6 +15,7 @@ const examRoutes = require("./routes/examRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const timetableRoutes = require("./routes/timetableRoutes");
 const userRoutes = require("./routes/userRoutes");
+const predictionRoutes = require("./routes/predictionRoutes");
 
 const app = express();
 
@@ -39,5 +40,6 @@ app.use("/api/exams", examRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/timetable", timetableRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/predictions", predictionRoutes);
 
 module.exports = app;

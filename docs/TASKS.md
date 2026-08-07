@@ -11,43 +11,43 @@
 
 ## Phase 2 - Backend
 
-- [ ] Backend Initialization
-- [ ] Express Server
-- [ ] Environment Configuration
-- [ ] MySQL Connection
-- [ ] Folder Structure
+- [x] Backend Initialization
+- [x] Express Server
+- [x] Environment Configuration
+- [x] MySQL Connection
+- [x] Folder Structure
 
 ---
 
 ## Phase 3 - Authentication
 
-- [ ] JWT Authentication
-- [ ] Login
-- [ ] Password Hashing
-- [ ] Role Based Authorization
+- [x] JWT Authentication
+- [x] Login
+- [x] Password Hashing
+- [x] Role Based Authorization
 
 ---
 
 ## Phase 4 - Modules
 
-- [ ] Department
-- [ ] Student
-- [ ] Teacher
-- [ ] Course
-- [ ] Enrollment
-- [ ] Attendance
-- [ ] Exam
-- [ ] Result
-- [ ] Payment
-- [ ] Timetable
+- [x] Department
+- [x] Student
+- [x] Teacher
+- [x] Course
+- [x] Enrollment
+- [x] Attendance
+- [x] Exam
+- [x] Result
+- [x] Payment
+- [x] Timetable
 
 ---
 
 ## Phase 5 - Frontend
 
-- [ ] React Setup
-- [ ] Dashboard
-- [ ] UI Components
+- [x] React Setup
+- [x] Dashboard
+- [x] UI Components
 - [ ] Responsive Design
 
 ---
@@ -55,7 +55,7 @@
 ## Phase 6 - AI
 
 - [ ] AI Chat Assistant
-- [ ] Student Performance Prediction
+- [x] Student Performance Prediction
 
 ---
 
