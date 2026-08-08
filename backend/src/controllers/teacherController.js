@@ -21,6 +21,17 @@ exports.getTeachers = (req, res) => {
 exports.getTeacherById = (req, res) => {
   const { id } = req.params;
 
+  // A teacher can only ever open their own profile - not anyone else's
+  if (
+    req.user.role === "teacher" &&
+    String(req.user.teacher_id) !== String(id)
+  ) {
+    return res.status(403).json({
+      success: false,
+      message: "Access Forbidden. You can only view your own profile.",
+    });
+  }
+
   Teacher.getTeacherById(id, (err, results) => {
     if (err) {
       return res.status(500).json({

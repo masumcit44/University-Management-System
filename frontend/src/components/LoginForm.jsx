@@ -35,7 +35,15 @@ function LoginForm() {
         JSON.stringify(response.data.user)
       );
 
-      navigate("/dashboard");
+      // Route each role to its own dashboard - reuses the same JWT/login
+      // response, just reads the role that came back with it
+      const roleHomeRoutes = {
+        admin: "/dashboard",
+        teacher: "/teacher-dashboard",
+        student: "/student-dashboard",
+      };
+
+      navigate(roleHomeRoutes[response.data.user.role] || "/dashboard");
     } catch (err) {
       console.error(err);
       setError(

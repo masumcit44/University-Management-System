@@ -1,4 +1,3 @@
-
 const {
     registerUser,
     loginUser
@@ -65,7 +64,9 @@ exports.login = (req, res) => {
                     user_id: data.user.user_id,
                     username: data.user.username,
                     email: data.user.email,
-                    role: data.user.role
+                    role: data.user.role,
+                    student_id: data.user.student_id,
+                    teacher_id: data.user.teacher_id
                 }
             });
 

@@ -3,20 +3,46 @@ const router = express.Router();
 
 const studentController = require("../controllers/studentController");
 const authMiddleware = require("../middlewares/authMiddleware");
+const roleMiddleware = require("../middlewares/roleMiddleware");
 
-// GET All
-router.get("/", authMiddleware, studentController.getStudents);
+// GET All (Admin & Teacher)
+router.get(
+    "/",
+    authMiddleware,
+    roleMiddleware("admin", "teacher"),
+    studentController.getStudents
+);
 
-// GET By ID
-router.get("/:id", authMiddleware, studentController.getStudentById);
+// GET By ID (Admin, Teacher, Student - student ownership checked in controller)
+router.get(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("admin", "teacher", "student"),
+    studentController.getStudentById
+);
 
-// POST
-router.post("/", authMiddleware, studentController.createStudent);
+// POST (Admin Only)
+router.post(
+    "/",
+    authMiddleware,
+    roleMiddleware("admin"),
+    studentController.createStudent
+);
 
-// PUT
-router.put("/:id", authMiddleware, studentController.updateStudent);
+// PUT (Admin Only)
+router.put(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("admin"),
+    studentController.updateStudent
+);
 
-// DELETE
-router.delete("/:id", authMiddleware, studentController.deleteStudent);
+// DELETE (Admin Only)
+router.delete(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("admin"),
+    studentController.deleteStudent
+);
 
 module.exports = router;

@@ -42,9 +42,56 @@ exports.getEnrollmentById = (req, res) => {
             });
         }
 
+        const enrollment = results[0];
+
+        // A student can only ever open their own enrollment - not anyone else's
+        if (
+            req.user.role === "student" &&
+            String(req.user.student_id) !== String(enrollment.student_id)
+        ) {
+            return res.status(403).json({
+                success: false,
+                message: "Access Forbidden. You can only view your own enrollment."
+            });
+        }
+
         res.status(200).json({
             success: true,
-            data: results[0]
+            data: enrollment
+        });
+
+    });
+
+};
+
+// GET Enrollments By Student (used by "My Courses" - student role)
+exports.getEnrollmentsByStudent = (req, res) => {
+
+    const { student_id } = req.params;
+
+    // A student can only ever pull their own courses - not anyone else's
+    if (
+        req.user.role === "student" &&
+        String(req.user.student_id) !== String(student_id)
+    ) {
+        return res.status(403).json({
+            success: false,
+            message: "Access Forbidden. You can only view your own courses."
+        });
+    }
+
+    Enrollment.getEnrollmentsByStudent(student_id, (err, results) => {
+
+        if (err) {
+            return res.status(500).json({
+                success: false,
+                message: err.message
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: results
         });
 
     });

@@ -83,7 +83,7 @@ const Timetable = {
     },
 
     // =======================
-    // Get Timetable By Course (used for Student view via enrolled courses)
+    // Get Timetable By Course
     // =======================
     getTimetableByCourse: (course_id, callback) => {
         const sql = `
@@ -104,6 +104,37 @@ const Timetable = {
         `;
 
         db.query(sql, [course_id], callback);
+    },
+
+    // =======================
+    // Get Timetable By Student (via their enrollments - a student's
+    // schedule is the union of every course they're enrolled in)
+    // =======================
+    getTimetableByStudent: (student_id, callback) => {
+        const sql = `
+            SELECT
+                timetable.timetable_id,
+                timetable.room_no,
+                timetable.day,
+                timetable.start_time,
+                timetable.end_time,
+                courses.course_name,
+                courses.course_code,
+                teachers.teacher_name
+            FROM timetable
+            JOIN courses
+                ON timetable.course_id = courses.course_id
+            JOIN teachers
+                ON timetable.teacher_id = teachers.teacher_id
+            JOIN enrollments
+                ON enrollments.course_id = timetable.course_id
+            WHERE enrollments.student_id = ?
+            ORDER BY
+                FIELD(timetable.day, 'Saturday','Sunday','Monday','Tuesday','Wednesday','Thursday','Friday'),
+                timetable.start_time
+        `;
+
+        db.query(sql, [student_id], callback);
     },
 
     // =======================

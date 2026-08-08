@@ -3,26 +3,70 @@ const router = express.Router();
 
 const timetableController = require("../controllers/timetableController");
 const authMiddleware = require("../middlewares/authMiddleware");
+const roleMiddleware = require("../middlewares/roleMiddleware");
 
-// GET All Timetable
-router.get("/", authMiddleware, timetableController.getTimetable);
+// GET All Timetable (Admin Only - full unfiltered schedule)
+router.get(
+    "/",
+    authMiddleware,
+    roleMiddleware("admin"),
+    timetableController.getTimetable
+);
 
-// GET Timetable By Teacher
-router.get("/teacher/:teacher_id", authMiddleware, timetableController.getTimetableByTeacher);
+// GET Timetable By Teacher (Admin & Teacher - teacher ownership checked in controller)
+router.get(
+    "/teacher/:teacher_id",
+    authMiddleware,
+    roleMiddleware("admin", "teacher"),
+    timetableController.getTimetableByTeacher
+);
 
-// GET Timetable By Course
-router.get("/course/:course_id", authMiddleware, timetableController.getTimetableByCourse);
+// GET Timetable By Course (Admin, Teacher, Student)
+router.get(
+    "/course/:course_id",
+    authMiddleware,
+    roleMiddleware("admin", "teacher", "student"),
+    timetableController.getTimetableByCourse
+);
 
-// GET Timetable By ID
-router.get("/:id", authMiddleware, timetableController.getTimetableById);
+// GET Timetable By Student (Admin & Student - student ownership checked in controller)
+router.get(
+    "/student/:student_id",
+    authMiddleware,
+    roleMiddleware("admin", "student"),
+    timetableController.getTimetableByStudent
+);
 
-// CREATE Timetable Entry
-router.post("/", authMiddleware, timetableController.createTimetable);
+// GET Timetable By ID (Admin Only)
+router.get(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("admin"),
+    timetableController.getTimetableById
+);
 
-// UPDATE Timetable Entry
-router.put("/:id", authMiddleware, timetableController.updateTimetable);
+// CREATE Timetable Entry (Admin Only)
+router.post(
+    "/",
+    authMiddleware,
+    roleMiddleware("admin"),
+    timetableController.createTimetable
+);
 
-// DELETE Timetable Entry
-router.delete("/:id", authMiddleware, timetableController.deleteTimetable);
+// UPDATE Timetable Entry (Admin Only)
+router.put(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("admin"),
+    timetableController.updateTimetable
+);
+
+// DELETE Timetable Entry (Admin Only)
+router.delete(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("admin"),
+    timetableController.deleteTimetable
+);
 
 module.exports = router;

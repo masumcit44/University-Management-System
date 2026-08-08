@@ -129,6 +129,48 @@ const Teacher = {
   deleteTeacher: (id, callback) => {
     const sql = "DELETE FROM teachers WHERE teacher_id = ?";
     db.query(sql, [id], callback);
+  },
+
+  // =======================
+  // Find Teacher By Email (used to link a login account)
+  // =======================
+  findTeacherByEmail: (email, callback) => {
+
+    const sql = `
+      SELECT teacher_id, teacher_email
+      FROM teachers
+      WHERE teacher_email = ?
+    `;
+
+    db.query(sql, [email], callback);
+  },
+
+  // =======================
+  // Link a User Account to a Teacher Record
+  // =======================
+  linkUserToTeacher: (teacher_id, user_id, callback) => {
+
+    const sql = `
+      UPDATE teachers
+      SET user_id = ?
+      WHERE teacher_id = ?
+    `;
+
+    db.query(sql, [user_id, teacher_id], callback);
+  },
+
+  // =======================
+  // Find Teacher By User ID (used at login to embed teacher_id in JWT)
+  // =======================
+  findTeacherByUserId: (user_id, callback) => {
+
+    const sql = `
+      SELECT teacher_id
+      FROM teachers
+      WHERE user_id = ?
+    `;
+
+    db.query(sql, [user_id], callback);
   }
 
 };

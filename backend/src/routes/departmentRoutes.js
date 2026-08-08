@@ -3,20 +3,36 @@ const router = express.Router();
 
 const departmentController = require("../controllers/departmentController");
 const authMiddleware = require("../middlewares/authMiddleware");
+const roleMiddleware = require("../middlewares/roleMiddleware");
 
-// Get All
+// Get All (Any Authenticated Role)
 router.get("/", authMiddleware, departmentController.getDepartments);
 
-// Get By ID
+// Get By ID (Any Authenticated Role)
 router.get("/:id", authMiddleware, departmentController.getDepartmentById);
 
-// Create
-router.post("/", authMiddleware, departmentController.createDepartment);
+// Create (Admin Only)
+router.post(
+    "/",
+    authMiddleware,
+    roleMiddleware("admin"),
+    departmentController.createDepartment
+);
 
-// Update
-router.put("/:id", authMiddleware, departmentController.updateDepartment);
+// Update (Admin Only)
+router.put(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("admin"),
+    departmentController.updateDepartment
+);
 
-// Delete
-router.delete("/:id", authMiddleware, departmentController.deleteDepartment);
+// Delete (Admin Only)
+router.delete(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("admin"),
+    departmentController.deleteDepartment
+);
 
 module.exports = router;

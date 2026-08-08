@@ -3,20 +3,36 @@ const router = express.Router();
 
 const courseController = require("../controllers/courseController");
 const authMiddleware = require("../middlewares/authMiddleware");
+const roleMiddleware = require("../middlewares/roleMiddleware");
 
-// GET All
+// GET All (Any Authenticated Role)
 router.get("/", authMiddleware, courseController.getCourses);
 
-// GET By ID
+// GET By ID (Any Authenticated Role)
 router.get("/:id", authMiddleware, courseController.getCourseById);
 
-// POST
-router.post("/", authMiddleware, courseController.createCourse);
+// POST (Admin Only)
+router.post(
+    "/",
+    authMiddleware,
+    roleMiddleware("admin"),
+    courseController.createCourse
+);
 
-// UPDATE
-router.put("/:id", authMiddleware, courseController.updateCourse);
+// UPDATE (Admin Only)
+router.put(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("admin"),
+    courseController.updateCourse
+);
 
-// DELETE
-router.delete("/:id", authMiddleware, courseController.deleteCourse);
+// DELETE (Admin Only)
+router.delete(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("admin"),
+    courseController.deleteCourse
+);
 
 module.exports = router;

@@ -3,20 +3,46 @@ const router = express.Router();
 
 const enrollmentController = require("../controllers/enrollmentController");
 const authMiddleware = require("../middlewares/authMiddleware");
+const roleMiddleware = require("../middlewares/roleMiddleware");
 
-// GET
-router.get("/", authMiddleware, enrollmentController.getEnrollments);
+// GET (Admin & Teacher)
+router.get(
+    "/",
+    authMiddleware,
+    roleMiddleware("admin", "teacher"),
+    enrollmentController.getEnrollments
+);
 
-// GET By ID
-router.get("/:id", authMiddleware, enrollmentController.getEnrollmentById);
+// GET By ID (Admin, Teacher, Student - student ownership checked in controller)
+router.get(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("admin", "teacher", "student"),
+    enrollmentController.getEnrollmentById
+);
 
-// POST
-router.post("/", authMiddleware, enrollmentController.createEnrollment);
+// POST (Admin Only)
+router.post(
+    "/",
+    authMiddleware,
+    roleMiddleware("admin"),
+    enrollmentController.createEnrollment
+);
 
-// UPDATE
-router.put("/:id", authMiddleware, enrollmentController.updateEnrollment);
+// UPDATE (Admin Only)
+router.put(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("admin"),
+    enrollmentController.updateEnrollment
+);
 
-// DELETE
-router.delete("/:id", authMiddleware, enrollmentController.deleteEnrollment);
+// DELETE (Admin Only)
+router.delete(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("admin"),
+    enrollmentController.deleteEnrollment
+);
 
 module.exports = router;

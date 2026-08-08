@@ -51,9 +51,22 @@ exports.getResultById = (req, res) => {
             });
         }
 
+        const result = results[0];
+
+        // A student can only ever open their own result - not anyone else's
+        if (
+            req.user.role === "student" &&
+            String(req.user.student_id) !== String(result.student_id)
+        ) {
+            return res.status(403).json({
+                success: false,
+                message: "Access Forbidden. You can only view your own result."
+            });
+        }
+
         res.status(200).json({
             success: true,
-            data: results[0]
+            data: result
         });
 
     });

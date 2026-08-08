@@ -3,20 +3,36 @@ const router = express.Router();
 
 const examController = require("../controllers/examController");
 const authMiddleware = require("../middlewares/authMiddleware");
+const roleMiddleware = require("../middlewares/roleMiddleware");
 
-// GET All
+// GET All (Any Authenticated Role - students/teachers need to see exam schedules)
 router.get("/", authMiddleware, examController.getExams);
 
-// GET By ID
+// GET By ID (Any Authenticated Role)
 router.get("/:id", authMiddleware, examController.getExamById);
 
-// POST
-router.post("/", authMiddleware, examController.createExam);
+// POST (Admin & Teacher Only)
+router.post(
+    "/",
+    authMiddleware,
+    roleMiddleware("admin", "teacher"),
+    examController.createExam
+);
 
-// PUT
-router.put("/:id", authMiddleware, examController.updateExam);
+// PUT (Admin & Teacher Only)
+router.put(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("admin", "teacher"),
+    examController.updateExam
+);
 
-// DELETE
-router.delete("/:id", authMiddleware, examController.deleteExam);
+// DELETE (Admin & Teacher Only)
+router.delete(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("admin", "teacher"),
+    examController.deleteExam
+);
 
 module.exports = router;

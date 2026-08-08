@@ -3,20 +3,46 @@ const router = express.Router();
 
 const teacherController = require("../controllers/teacherController");
 const authMiddleware = require("../middlewares/authMiddleware");
+const roleMiddleware = require("../middlewares/roleMiddleware");
 
-// GET All Teachers
-router.get("/", authMiddleware, teacherController.getTeachers);
+// GET All Teachers (Admin Only)
+router.get(
+    "/",
+    authMiddleware,
+    roleMiddleware("admin"),
+    teacherController.getTeachers
+);
 
-// GET Teacher By ID
-router.get("/:id", authMiddleware, teacherController.getTeacherById);
+// GET Teacher By ID (Admin & Teacher - teacher ownership checked in controller)
+router.get(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("admin", "teacher"),
+    teacherController.getTeacherById
+);
 
-// CREATE Teacher
-router.post("/", authMiddleware, teacherController.createTeacher);
+// CREATE Teacher (Admin Only)
+router.post(
+    "/",
+    authMiddleware,
+    roleMiddleware("admin"),
+    teacherController.createTeacher
+);
 
-// UPDATE Teacher
-router.put("/:id", authMiddleware, teacherController.updateTeacher);
+// UPDATE Teacher (Admin Only)
+router.put(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("admin"),
+    teacherController.updateTeacher
+);
 
-// DELETE Teacher
-router.delete("/:id", authMiddleware, teacherController.deleteTeacher);
+// DELETE Teacher (Admin Only)
+router.delete(
+    "/:id",
+    authMiddleware,
+    roleMiddleware("admin"),
+    teacherController.deleteTeacher
+);
 
 module.exports = router;

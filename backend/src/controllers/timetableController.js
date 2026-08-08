@@ -1,7 +1,7 @@
 const Timetable = require("../models/timetableModel");
 
 // =======================
-// GET All Timetable
+// GET All Timetable (Admin only - full unfiltered schedule)
 // =======================
 exports.getTimetable = (req, res) => {
 
@@ -56,11 +56,21 @@ exports.getTimetableById = (req, res) => {
 };
 
 // =======================
-// GET Timetable By Teacher
+// GET Timetable By Teacher (a teacher may only pull their own)
 // =======================
 exports.getTimetableByTeacher = (req, res) => {
 
     const { teacher_id } = req.params;
+
+    if (
+        req.user.role === "teacher" &&
+        String(req.user.teacher_id) !== String(teacher_id)
+    ) {
+        return res.status(403).json({
+            success: false,
+            message: "Access Forbidden. You can only view your own schedule."
+        });
+    }
 
     Timetable.getTimetableByTeacher(teacher_id, (err, results) => {
 
@@ -81,7 +91,7 @@ exports.getTimetableByTeacher = (req, res) => {
 };
 
 // =======================
-// GET Timetable By Course
+// GET Timetable By Course (course-level view, open to any authenticated role)
 // =======================
 exports.getTimetableByCourse = (req, res) => {
 
@@ -106,7 +116,42 @@ exports.getTimetableByCourse = (req, res) => {
 };
 
 // =======================
-// CREATE Timetable Entry
+// GET Timetable By Student (a student may only pull their own)
+// =======================
+exports.getTimetableByStudent = (req, res) => {
+
+    const { student_id } = req.params;
+
+    if (
+        req.user.role === "student" &&
+        String(req.user.student_id) !== String(student_id)
+    ) {
+        return res.status(403).json({
+            success: false,
+            message: "Access Forbidden. You can only view your own schedule."
+        });
+    }
+
+    Timetable.getTimetableByStudent(student_id, (err, results) => {
+
+        if (err) {
+            return res.status(500).json({
+                success: false,
+                message: err.message
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            data: results
+        });
+
+    });
+
+};
+
+// =======================
+// CREATE Timetable Entry (Admin only - enforced at route level)
 // =======================
 exports.createTimetable = (req, res) => {
 
@@ -160,7 +205,7 @@ exports.createTimetable = (req, res) => {
 };
 
 // =======================
-// UPDATE Timetable Entry
+// UPDATE Timetable Entry (Admin only - enforced at route level)
 // =======================
 exports.updateTimetable = (req, res) => {
 
@@ -217,7 +262,7 @@ exports.updateTimetable = (req, res) => {
 };
 
 // =======================
-// DELETE Timetable Entry
+// DELETE Timetable Entry (Admin only - enforced at route level)
 // =======================
 exports.deleteTimetable = (req, res) => {
 

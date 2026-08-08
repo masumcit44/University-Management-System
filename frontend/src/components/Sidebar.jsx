@@ -18,52 +18,75 @@ import {
   Sparkles,
 } from "lucide-react";
 
+// allowedRoles omitted = visible to every logged-in role
 const groups = [
   {
     title: "Overview",
     links: [
-      { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { to: "/reports", label: "Reports", icon: FileBarChart2 },
+      { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, allowedRoles: ["admin"] },
+      { to: "/teacher-dashboard", label: "Dashboard", icon: LayoutDashboard, allowedRoles: ["teacher"] },
+      { to: "/student-dashboard", label: "Dashboard", icon: LayoutDashboard, allowedRoles: ["student"] },
+      { to: "/reports", label: "Reports", icon: FileBarChart2, allowedRoles: ["admin"] },
     ],
   },
   {
     title: "People",
     links: [
-      { to: "/students", label: "Students", icon: Users },
-      { to: "/teachers", label: "Teachers", icon: GraduationCap },
-      { to: "/departments", label: "Departments", icon: Building2 },
+      { to: "/students", label: "Students", icon: Users, allowedRoles: ["admin", "teacher"] },
+      { to: "/teachers", label: "Teachers", icon: GraduationCap, allowedRoles: ["admin"] },
+      { to: "/departments", label: "Departments", icon: Building2, allowedRoles: ["admin"] },
     ],
   },
   {
     title: "Academic",
     links: [
-      { to: "/courses", label: "Courses", icon: BookOpen },
-      { to: "/enrollment", label: "Enrollment", icon: ClipboardList },
-      { to: "/attendance", label: "Attendance", icon: CalendarCheck },
-      { to: "/exams", label: "Exams", icon: NotebookPen },
-      { to: "/results", label: "Results", icon: FileText },
-      { to: "/cgpa", label: "CGPA", icon: Award },
-      { to: "/timetable", label: "Timetable", icon: CalendarClock },
+      { to: "/courses", label: "Courses", icon: BookOpen, allowedRoles: ["admin", "teacher"] },
+      { to: "/courses", label: "My Courses", icon: BookOpen, allowedRoles: ["student"] },
+      { to: "/enrollment", label: "Enrollment", icon: ClipboardList, allowedRoles: ["admin"] },
+      { to: "/attendance", label: "Attendance", icon: CalendarCheck, allowedRoles: ["admin", "teacher"] },
+      { to: "/attendance", label: "My Attendance", icon: CalendarCheck, allowedRoles: ["student"] },
+      { to: "/exams", label: "Exams", icon: NotebookPen, allowedRoles: ["admin", "teacher"] },
+      { to: "/exams", label: "My Exams", icon: NotebookPen, allowedRoles: ["student"] },
+      { to: "/results", label: "Results", icon: FileText, allowedRoles: ["admin", "teacher"] },
+      { to: "/results", label: "My Results", icon: FileText, allowedRoles: ["student"] },
+      { to: "/cgpa", label: "CGPA", icon: Award, allowedRoles: ["admin"] },
+      { to: "/cgpa", label: "My CGPA", icon: Award, allowedRoles: ["student"] },
+      { to: "/timetable", label: "Timetable", icon: CalendarClock, allowedRoles: ["admin", "teacher"] },
+      { to: "/timetable", label: "My Timetable", icon: CalendarClock, allowedRoles: ["student"] },
     ],
   },
   {
     title: "Intelligence",
     links: [
-      { to: "/prediction", label: "Prediction", icon: TrendingUp },
+      { to: "/prediction", label: "Prediction", icon: TrendingUp, allowedRoles: ["admin"] },
       { to: "/chat", label: "AI Chat Assistant", icon: Sparkles },
     ],
   },
   {
     title: "Administration",
     links: [
-      { to: "/payments", label: "Payments", icon: Wallet },
-      { to: "/admin", label: "Admin Panel", icon: ShieldCheck },
+      { to: "/payments", label: "Payments", icon: Wallet, allowedRoles: ["admin"] },
+      { to: "/payments", label: "My Payments", icon: Wallet, allowedRoles: ["student"] },
+      { to: "/admin-panel", label: "Admin Panel", icon: ShieldCheck, allowedRoles: ["admin"] },
     ],
   },
 ];
 
 function Sidebar() {
   const location = useLocation();
+
+  const currentUser = JSON.parse(localStorage.getItem("user") || "null");
+  const role = currentUser?.role;
+
+  // Filter each group's links by role, then drop any group left with none
+  const visibleGroups = groups
+    .map((group) => ({
+      ...group,
+      links: group.links.filter(
+        (link) => !link.allowedRoles || link.allowedRoles.includes(role)
+      ),
+    }))
+    .filter((group) => group.links.length > 0);
 
   return (
     <aside className="w-64 shrink-0 bg-night text-night-text h-screen flex flex-col border-r border-line-strong">
@@ -87,7 +110,7 @@ function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-5">
-        {groups.map((group) => (
+        {visibleGroups.map((group) => (
           <div key={group.title} className="mb-6 last:mb-0">
             <p className="label-mono text-white/30 px-5 mb-2">
               {group.title}
@@ -98,7 +121,7 @@ function Sidebar() {
 
               return (
                 <Link
-                  key={to}
+                  key={label}
                   to={to}
                   aria-current={active ? "page" : undefined}
                   className={`group relative flex items-center gap-3 pl-5 pr-4 py-2.5 transition-colors ${

@@ -137,6 +137,48 @@ const Student = {
 
         db.query(sql, [id], callback);
 
+    },
+
+    // =======================
+    // Find Student By Email (used to link a login account)
+    // =======================
+    findStudentByEmail: (email, callback) => {
+
+        const sql = `
+            SELECT student_id, student_email
+            FROM students
+            WHERE student_email = ?
+        `;
+
+        db.query(sql, [email], callback);
+    },
+
+    // =======================
+    // Link a User Account to a Student Record
+    // =======================
+    linkUserToStudent: (student_id, user_id, callback) => {
+
+        const sql = `
+            UPDATE students
+            SET user_id = ?
+            WHERE student_id = ?
+        `;
+
+        db.query(sql, [user_id, student_id], callback);
+    },
+
+    // =======================
+    // Find Student By User ID (used at login to embed student_id in JWT)
+    // =======================
+    findStudentByUserId: (user_id, callback) => {
+
+        const sql = `
+            SELECT student_id
+            FROM students
+            WHERE user_id = ?
+        `;
+
+        db.query(sql, [user_id], callback);
     }
 
 };

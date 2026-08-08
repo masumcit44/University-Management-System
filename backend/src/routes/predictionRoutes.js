@@ -15,10 +15,11 @@ router.get(
     predictionController.getCohortPrediction
 );
 
-// GET Student Performance Prediction
+// GET Student Performance Prediction (Admin & Teacher Only)
 router.get(
     "/:student_id",
     authMiddleware,
+    roleMiddleware("admin", "teacher"),
     predictionController.getStudentPrediction
 );
 

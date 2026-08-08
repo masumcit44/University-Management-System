@@ -1,7 +1,8 @@
 const Payment = require("../models/paymentModel");
 
 // =======================
-// GET All Payments
+// GET All Payments (Admin only - route already enforces this,
+// this is a defense-in-depth check)
 // =======================
 exports.getPayments = (req, res) => {
 
@@ -46,9 +47,22 @@ exports.getPaymentById = (req, res) => {
             });
         }
 
+        const payment = results[0];
+
+        // A student can only open their own payment record
+        if (
+            req.user.role === "student" &&
+            String(req.user.student_id) !== String(payment.student_id)
+        ) {
+            return res.status(403).json({
+                success: false,
+                message: "Access Forbidden. This is not your payment record."
+            });
+        }
+
         res.status(200).json({
             success: true,
-            data: results[0]
+            data: payment
         });
 
     });
@@ -61,6 +75,17 @@ exports.getPaymentById = (req, res) => {
 exports.getPaymentsByStudent = (req, res) => {
 
     const { student_id } = req.params;
+
+    // A student can only pull their own payment history
+    if (
+        req.user.role === "student" &&
+        String(req.user.student_id) !== String(student_id)
+    ) {
+        return res.status(403).json({
+            success: false,
+            message: "Access Forbidden. You can only view your own payments."
+        });
+    }
 
     Payment.getPaymentsByStudent(student_id, (err, results) => {
 
@@ -81,7 +106,7 @@ exports.getPaymentsByStudent = (req, res) => {
 };
 
 // =======================
-// CREATE Payment
+// CREATE Payment (Admin only - enforced at route level)
 // =======================
 exports.createPayment = (req, res) => {
 
@@ -124,7 +149,7 @@ exports.createPayment = (req, res) => {
 };
 
 // =======================
-// UPDATE Payment
+// UPDATE Payment (Admin only - enforced at route level)
 // =======================
 exports.updatePayment = (req, res) => {
 
@@ -168,7 +193,7 @@ exports.updatePayment = (req, res) => {
 };
 
 // =======================
-// DELETE Payment
+// DELETE Payment (Admin only - enforced at route level)
 // =======================
 exports.deletePayment = (req, res) => {
 

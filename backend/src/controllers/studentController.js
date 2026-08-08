@@ -25,6 +25,17 @@ exports.getStudents = (req, res) => {
 exports.getStudentById = (req, res) => {
     const { id } = req.params;
 
+    // A student can only ever open their own profile - not anyone else's
+    if (
+        req.user.role === "student" &&
+        String(req.user.student_id) !== String(id)
+    ) {
+        return res.status(403).json({
+            success: false,
+            message: "Access Forbidden. You can only view your own profile."
+        });
+    }
+
     Student.getStudentById(id, (err, results) => {
 
         if (err) {

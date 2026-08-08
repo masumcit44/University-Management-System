@@ -89,6 +89,12 @@ const toTimeInputValue = (time) => {
 };
 
 function Timetable() {
+  const currentUser = JSON.parse(localStorage.getItem("user") || "null");
+  const role = currentUser?.role;
+  const isAdmin = role === "admin";
+  // Teacher/Student get a read-only view of just their own schedule
+  const canManage = isAdmin;
+
   const [entries, setEntries] = useState([]);
   const [courses, setCourses] = useState([]);
   const [teachers, setTeachers] = useState([]);
@@ -105,15 +111,28 @@ function Timetable() {
 
   useEffect(() => {
     fetchTimetable();
-    fetchCourses();
-    fetchTeachers();
+
+    if (isAdmin) {
+      fetchCourses();
+      fetchTeachers();
+    }
   }, []);
 
   const fetchTimetable = async () => {
     try {
       setError("");
 
-      const res = await api.get("/timetable");
+      // Each role hits a different endpoint - the backend also enforces
+      // this ownership, this just avoids a 403 round-trip
+      let url = "/timetable";
+
+      if (role === "teacher") {
+        url = `/timetable/teacher/${currentUser.teacher_id}`;
+      } else if (role === "student") {
+        url = `/timetable/student/${currentUser.student_id}`;
+      }
+
+      const res = await api.get(url);
       setEntries(res.data.data);
     } catch (err) {
       console.error(err);
@@ -247,7 +266,9 @@ function Timetable() {
 
   const getEmptyStateTitle = () => {
     if (entries.length === 0) {
-      return "No classes scheduled yet";
+      return isAdmin
+        ? "No classes scheduled yet"
+        : "No classes on your schedule yet";
     }
 
     if (selectedCourse) {
@@ -259,7 +280,9 @@ function Timetable() {
 
   const getEmptyStateHint = () => {
     if (entries.length === 0) {
-      return "Add the first class to build the schedule";
+      return isAdmin
+        ? "Add the first class to build the schedule"
+        : "Your admin hasn't assigned any classes to you yet";
     }
 
     if (selectedCourse) {
@@ -273,105 +296,111 @@ function Timetable() {
     <MainLayout>
       <PageHeader
         title="Timetable"
-        subtitle="Weekly class schedule across courses, teachers and rooms."
-        actionLabel="Add Class"
-        onAction={openCreateModal}
+        subtitle={
+          isAdmin
+            ? "Weekly class schedule across courses, teachers and rooms."
+            : "Your own weekly class schedule."
+        }
+        actionLabel={canManage ? "Add Class" : undefined}
+        onAction={canManage ? openCreateModal : undefined}
       />
 
-      <div className="surface p-5 mb-6">
-        <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-5">
-          <div>
-            <p className="label-mono">Schedule finder</p>
+      {isAdmin && (
+        <div className="surface p-5 mb-6">
+          <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-5">
+            <div>
+              <p className="label-mono">Schedule finder</p>
 
-            <h2 className="text-xl font-semibold text-ink mt-1">
-              Find classes by course
-            </h2>
+              <h2 className="text-xl font-semibold text-ink mt-1">
+                Find classes by course
+              </h2>
 
-            <p className="text-sm text-ink-soft mt-2 max-w-xl">
-              Select a course to see every day it meets, along with the class
-              time, teacher, room and duration.
-            </p>
+              <p className="text-sm text-ink-soft mt-2 max-w-xl">
+                Select a course to see every day it meets, along with the class
+                time, teacher, room and duration.
+              </p>
+            </div>
+
+            <div className="w-full xl:w-[25rem]">
+              <label
+                className="label-mono block"
+                htmlFor="timetable-course"
+              >
+                Course
+              </label>
+
+              <select
+                id="timetable-course"
+                value={selectedCourseId}
+                onChange={(event) => {
+                  setSelectedCourseId(event.target.value);
+                  setSearchTerm("");
+                }}
+                className="control mt-1.5"
+              >
+                <option value="">All courses</option>
+
+                {courses.map((course) => (
+                  <option
+                    key={course.course_id}
+                    value={course.course_id}
+                  >
+                    {course.course_name} ({course.course_code})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div className="w-full xl:w-[25rem]">
-            <label
-              className="label-mono block"
-              htmlFor="timetable-course"
-            >
-              Course
-            </label>
+          {selectedCourse ? (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-5 pt-5 border-t border-line">
+              <div className="border border-line p-3">
+                <p className="label-mono">Course</p>
 
-            <select
-              id="timetable-course"
-              value={selectedCourseId}
-              onChange={(event) => {
-                setSelectedCourseId(event.target.value);
-                setSearchTerm("");
-              }}
-              className="control mt-1.5"
-            >
-              <option value="">All courses</option>
+                <p className="text-sm font-semibold text-ink mt-1">
+                  {selectedCourse.course_name}
+                </p>
+              </div>
 
-              {courses.map((course) => (
-                <option
-                  key={course.course_id}
-                  value={course.course_id}
-                >
-                  {course.course_name} ({course.course_code})
-                </option>
-              ))}
-            </select>
-          </div>
+              <div className="border border-line p-3">
+                <p className="label-mono">Code</p>
+
+                <p className="text-sm font-semibold text-ink mt-1">
+                  {selectedCourse.course_code || "—"}
+                </p>
+              </div>
+
+              <div className="border border-line p-3">
+                <p className="label-mono">Credit</p>
+
+                <p className="text-sm font-semibold text-ink mt-1">
+                  {selectedCourse.credit ?? "—"}
+                </p>
+              </div>
+
+              <div className="border border-line p-3">
+                <p className="label-mono">Semester</p>
+
+                <p className="text-sm font-semibold text-ink mt-1">
+                  {selectedCourse.semester ?? "—"}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start gap-3 mt-5 pt-5 border-t border-line text-sm text-ink-soft">
+              <CalendarDays
+                size={17}
+                className="text-ink-mute mt-0.5 shrink-0"
+              />
+
+              <p>
+                Showing all scheduled classes. Choose a course above to narrow
+                this table to one weekly schedule.
+              </p>
+            </div>
+          )}
         </div>
-
-        {selectedCourse ? (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-5 pt-5 border-t border-line">
-            <div className="border border-line p-3">
-              <p className="label-mono">Course</p>
-
-              <p className="text-sm font-semibold text-ink mt-1">
-                {selectedCourse.course_name}
-              </p>
-            </div>
-
-            <div className="border border-line p-3">
-              <p className="label-mono">Code</p>
-
-              <p className="text-sm font-semibold text-ink mt-1">
-                {selectedCourse.course_code || "—"}
-              </p>
-            </div>
-
-            <div className="border border-line p-3">
-              <p className="label-mono">Credit</p>
-
-              <p className="text-sm font-semibold text-ink mt-1">
-                {selectedCourse.credit ?? "—"}
-              </p>
-            </div>
-
-            <div className="border border-line p-3">
-              <p className="label-mono">Semester</p>
-
-              <p className="text-sm font-semibold text-ink mt-1">
-                {selectedCourse.semester ?? "—"}
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-start gap-3 mt-5 pt-5 border-t border-line text-sm text-ink-soft">
-            <CalendarDays
-              size={17}
-              className="text-ink-mute mt-0.5 shrink-0"
-            />
-
-            <p>
-              Showing all scheduled classes. Choose a course above to narrow
-              this table to one weekly schedule.
-            </p>
-          </div>
-        )}
-      </div>
+      )}
 
       <div className="surface">
         <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 border-b border-line">
@@ -427,9 +456,12 @@ function Timetable() {
                   <th className={TH}>Teacher</th>
                   <th className={TH}>Room</th>
                   <th className={TH}>Class details</th>
-                  <th className={`${TH} text-center`}>
-                    Action
-                  </th>
+
+                  {canManage && (
+                    <th className={`${TH} text-center`}>
+                      Action
+                    </th>
+                  )}
                 </tr>
               </thead>
 
@@ -513,14 +545,16 @@ function Timetable() {
                       </span>
                     </td>
 
-                    <td className="px-5 py-3.5">
-                      <RowActions
-                        onEdit={() => openEditModal(entry)}
-                        onDelete={() =>
-                          setDeletingId(entry.timetable_id)
-                        }
-                      />
-                    </td>
+                    {canManage && (
+                      <td className="px-5 py-3.5">
+                        <RowActions
+                          onEdit={() => openEditModal(entry)}
+                          onDelete={() =>
+                            setDeletingId(entry.timetable_id)
+                          }
+                        />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -529,7 +563,7 @@ function Timetable() {
         )}
       </div>
 
-      {showModal && (
+      {showModal && canManage && (
         <Modal
           title={editingId ? "Edit Class" : "Add Class"}
           onClose={() => setShowModal(false)}
@@ -626,7 +660,7 @@ function Timetable() {
         </Modal>
       )}
 
-      {deletingId && (
+      {deletingId && canManage && (
         <ConfirmDialog
           title="Delete Class"
           message="Are you sure you want to remove this class from the schedule?"
