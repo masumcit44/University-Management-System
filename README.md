@@ -24,3 +24,24 @@ The following accounts are seeded for logging into the live/production site:
 | Student | student1@ums.com  | Student@123 |
 
 > **Note:** These are demo/test accounts only. Passwords should be changed before real production use.
+
+### Teacher — teacher1@ums.com
+
+| Field | Value |
+|-------|-------|
+| Designation | Lecturer |
+| Department | Computer Science |
+| Assigned courses (teacher_courses) | None |
+| Timetable | None |
+| Course materials | None |
+| Announcements | None |
+
+### Student — student1@ums.com
+
+| Field | Value |
+|-------|-------|
+| Department | Computer Science |
+| Enrolled courses | CE301 — Geotechnical Engineering (Semester 5, Session 2026, status: pending) |
+| Attendance records | None |
+| Exam / results | None |
+| Payments | None |
