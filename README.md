@@ -27,21 +27,70 @@ The following accounts are seeded for logging into the live/production site:
 
 ### Teacher — teacher1@ums.com
 
+**User account**
+
 | Field | Value |
 |-------|-------|
+| Username | teacher1 |
+| Email | teacher1@ums.com |
+| Role | teacher |
+| Status | Active |
+| Created at | 2026-08-16 09:17:57 UTC |
+| Last login | 2026-08-16 09:19:40 UTC |
+
+**Profile (teachers table)**
+
+| Field | Value |
+|-------|-------|
+| teacher_id | 1 |
+| Name | teacher1 |
+| Phone | 01000000000 |
 | Designation | Lecturer |
-| Department | Computer Science |
+| Gender / Address / DOB / Joining date | None set |
+| Department | Computer Science (CSE) |
+
+**Related data**
+
+| Field | Value |
+|-------|-------|
 | Assigned courses (teacher_courses) | None |
 | Timetable | None |
 | Course materials | None |
-| Announcements | None |
+| Announcements (created by) | None |
 
 ### Student — student1@ums.com
 
+**User account**
+
 | Field | Value |
 |-------|-------|
-| Department | Computer Science |
-| Enrolled courses | CE301 — Geotechnical Engineering (Semester 5, Session 2026, status: pending) |
+| Username | student1 |
+| Email | student1@ums.com |
+| Role | student |
+| Status | Active |
+| Created at | 2026-08-16 09:17:57 UTC |
+| Last login | 2026-08-16 09:33:56 UTC |
+
+**Profile (students table)**
+
+| Field | Value |
+|-------|-------|
+| student_id | 1 |
+| Name | student1 |
+| Phone | 01000000000 |
+| Gender / Address / DOB / Admission date | None set |
+| Department | Computer Science (CSE) |
+
+**Enrollments**
+
+| Course | Semester | Session | Enrollment date | Status |
+|--------|----------|---------|-----------------|--------|
+| CE301 — Geotechnical Engineering (3.00 cr) | 5 | 2026 | 2026-08-16 | pending |
+
+| Section | Records |
+|---------|---------|
 | Attendance records | None |
 | Exam / results | None |
 | Payments | None |
+
+(No records exist yet for this student in any of these tables)
