@@ -51,12 +51,43 @@ The following accounts are seeded for logging into the live/production site:
 
 **Related data**
 
-| Field | Value |
-|-------|-------|
-| Assigned courses (teacher_courses) | None |
-| Timetable | None |
-| Course materials | None |
-| Announcements (created by) | None |
+**Assigned courses (teacher_courses)**
+
+| Course | Name | Credit |
+|--------|------|--------|
+| CSE201 | Data Structures | 3.00 |
+| CSE203 | Database Management Systems | 3.00 |
+| CSE305 | Operating Systems | 3.00 |
+
+**Timetable**
+
+| Course | Day | Time | Room |
+|--------|-----|------|------|
+| CSE201 | Sunday | 09:00–10:30 | CSE Lab 2 |
+| CSE201 | Wednesday | 11:00–12:30 | CSE Lab 2 |
+| CSE203 | Monday | 09:00–10:30 | CSE-301 |
+| CSE203 | Thursday | 10:00–11:30 | CSE-301 |
+| CSE305 | Tuesday | 09:00–10:30 | CSE Lab 1 |
+| CSE305 | Wednesday | 09:00–10:30 | CSE Lab 1 |
+
+**Course materials**
+
+| Course | Material |
+|--------|----------|
+| CSE201 | Data Structures — Lecture Notes (Unit 1) |
+| CSE201 | Assignment 1 — Sorting Algorithms |
+| CSE203 | ER Diagram & Relational Model — Slides |
+| CSE203 | SQL Practice Problem Set |
+| CSE305 | Processes & Threads — Lecture Notes |
+| CSE305 | Lab Manual — Shell Scripting |
+
+**Announcements (created by teacher1)**
+
+| Title | Target |
+|-------|--------|
+| Welcome to Database Management Systems (CSE203) | students |
+| Midterm Schedule — Data Structures (CSE201) | students |
+| Operating Systems (CSE305) — Lab Resources | students |
 
 ### Student — student1@ums.com
 
@@ -83,14 +114,35 @@ The following accounts are seeded for logging into the live/production site:
 
 **Enrollments**
 
-| Course | Semester | Session | Enrollment date | Status |
-|--------|----------|---------|-----------------|--------|
-| CE301 — Geotechnical Engineering (3.00 cr) | 5 | 2026 | 2026-08-16 | pending |
+| Course | Semester | Session | Status |
+|--------|----------|---------|--------|
+| CE301 — Geotechnical Engineering (3.00 cr) | 5 | 2026 | pending |
+| CSE201 — Data Structures (3.00 cr) | 5 | 2026 | approved |
+| CSE203 — Database Management Systems (3.00 cr) | 5 | 2026 | approved |
+| CSE305 — Operating Systems (3.00 cr) | 5 | 2026 | approved |
 
-| Section | Records |
-|---------|---------|
-| Attendance records | None |
-| Exam / results | None |
-| Payments | None |
+**Attendance (past few weeks)**
 
-(No records exist yet for this student in any of these tables)
+| Course | Present | Absent | Late |
+|--------|---------|--------|------|
+| CSE201 | 6 | 1 | 1 |
+| CSE203 | 6 | 1 | 1 |
+| CSE305 | 6 | 1 | 1 |
+
+**Exam results**
+
+| Course | Exam | Date | Marks | Grade | GP |
+|--------|------|------|-------|-------|----|
+| CSE201 | Mid | 2026-08-06 | 24/30 | A+ | 4.00 |
+| CSE201 | Final | 2026-08-13 | 42/50 | A+ | 4.00 |
+| CSE203 | Mid | 2026-08-06 | 22/30 | A- | 3.50 |
+| CSE203 | Final | 2026-08-13 | 38/50 | A | 3.75 |
+| CSE305 | Mid | 2026-08-06 | 18/30 | B | 3.00 |
+| CSE305 | Final | 2026-08-13 | 35/50 | A- | 3.50 |
+
+**Payments**
+
+| Amount | Status | Method | Date |
+|--------|--------|--------|------|
+| 37500.00 | Paid | Mobile Banking | 2026-07-05 |
+| 25000.00 | Pending | Card | 2026-08-01 |
