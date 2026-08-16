@@ -1,5 +1,5 @@
 import MainLayout from "../layouts/MainLayout";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../services/api";
 import {
   BookOpen,
@@ -17,7 +17,9 @@ import EmptyState from "../components/EmptyState";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import RowActions from "../components/RowActions";
+import SortableTh from "../components/SortableTh";
 import Field, { CONTROL_CLASS } from "../components/Field";
+import { useSort } from "../services/useSort";
 
 const DAYS = [
   "Saturday",
@@ -29,6 +31,10 @@ const DAYS = [
   "Friday",
 ];
 
+// Numeric rank per day, so the schedule can order Sat -> Fri (the file's
+// DAYS constant is the canonical order).
+const DAY_INDEX = Object.fromEntries(DAYS.map((day, i) => [day, i]));
+
 const EMPTY_FORM = {
   course_id: "",
   teacher_id: "",
@@ -38,8 +44,8 @@ const EMPTY_FORM = {
   end_time: "",
 };
 
-const TH = "text-left px-5 py-3 label-mono whitespace-nowrap";
-const TD = "px-5 py-3.5 text-[0.8125rem] text-ink-soft whitespace-nowrap";
+const TH = "text-left px-5 py-3 label-mono whitespace-nowrap align-middle";
+const TD = "px-5 py-3.5 text-[0.8125rem] text-ink-soft whitespace-nowrap align-middle";
 
 const formatTime = (time) => {
   if (!time) return "—";
@@ -108,6 +114,10 @@ function Timetable() {
   const [deletingId, setDeletingId] = useState(null);
 
   const [formData, setFormData] = useState(EMPTY_FORM);
+  const [errors, setErrors] = useState({});
+  const [modalError, setModalError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     fetchTimetable();
@@ -170,6 +180,9 @@ function Timetable() {
   const openCreateModal = () => {
     setFormData(EMPTY_FORM);
     setEditingId(null);
+    setErrors({});
+    setModalError("");
+    setSaved(false);
     setShowModal(true);
   };
 
@@ -184,21 +197,24 @@ function Timetable() {
     });
 
     setEditingId(entry.timetable_id);
+    setErrors({});
+    setModalError("");
+    setSaved(false);
     setShowModal(true);
   };
 
   const handleSave = async () => {
-    if (
-      !formData.course_id ||
-      !formData.teacher_id ||
-      !formData.room_no ||
-      !formData.day ||
-      !formData.start_time ||
-      !formData.end_time
-    ) {
-      alert("All timetable fields are required");
-      return;
-    }
+    const newErrors = {};
+    if (!formData.course_id) newErrors.course_id = "Select a course";
+    if (!formData.teacher_id) newErrors.teacher_id = "Select a teacher";
+    if (!formData.room_no) newErrors.room_no = "Room number is required";
+    if (!formData.day) newErrors.day = "Select a day";
+    if (!formData.start_time) newErrors.start_time = "Start time is required";
+    if (!formData.end_time) newErrors.end_time = "End time is required";
+
+    setErrors(newErrors);
+    setModalError("");
+    if (Object.keys(newErrors).length) return;
 
     try {
       if (editingId) {
@@ -207,14 +223,17 @@ function Timetable() {
         await api.post("/timetable", formData);
       }
 
-      setShowModal(false);
-      setEditingId(null);
-      setFormData(EMPTY_FORM);
-
-      fetchTimetable();
+      setSaved(true);
+      setTimeout(() => {
+        setShowModal(false);
+        setEditingId(null);
+        setFormData(EMPTY_FORM);
+        setSaved(false);
+        fetchTimetable();
+      }, 600);
     } catch (err) {
       console.error(err);
-      alert(
+      setModalError(
         err.response?.data?.message || "Failed to save timetable entry"
       );
     }
@@ -225,10 +244,11 @@ function Timetable() {
       await api.delete(`/timetable/${deletingId}`);
 
       setDeletingId(null);
+      setDeleteError("");
       fetchTimetable();
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to delete entry");
+      setDeleteError(err.response?.data?.message || "Failed to delete entry");
     }
   };
 
@@ -292,6 +312,26 @@ function Timetable() {
     return "Try a different course, teacher or day";
   };
 
+  // Default view: ordered by the week (Sat -> Fri), then start time. Clicking
+  // any sortable header replaces this ordering.
+  const defaultOrdered = useMemo(() => {
+    return [...filteredEntries].sort(
+      (a, b) =>
+        (DAY_INDEX[a.day] ?? 99) - (DAY_INDEX[b.day] ?? 99) ||
+        String(a.start_time ?? "").localeCompare(String(b.start_time ?? ""))
+    );
+  }, [filteredEntries]);
+
+  const { sorted: sortedEntries, sortKey, sortDir, toggle } = useSort(defaultOrdered, {
+    accessors: {
+      day: (entry) => DAY_INDEX[entry.day] ?? 99,
+      course: (entry) => String(entry.course_name ?? entry.course_code ?? ""),
+      time: (entry) => String(entry.start_time ?? ""),
+      teacher: (entry) => String(entry.teacher_name ?? ""),
+      room: (entry) => String(entry.room_no ?? ""),
+    },
+  });
+
   return (
     <MainLayout>
       <PageHeader
@@ -354,34 +394,34 @@ function Timetable() {
 
           {selectedCourse ? (
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-5 pt-5 border-t border-line">
-              <div className="border border-line p-3">
+              <div className="border border-line bg-paper p-3.5">
                 <p className="label-mono">Course</p>
 
-                <p className="text-sm font-semibold text-ink mt-1">
+                <p className="text-sm font-semibold text-ink mt-1.5">
                   {selectedCourse.course_name}
                 </p>
               </div>
 
-              <div className="border border-line p-3">
+              <div className="border border-line bg-paper p-3.5">
                 <p className="label-mono">Code</p>
 
-                <p className="text-sm font-semibold text-ink mt-1">
+                <p className="text-sm font-semibold text-ink mt-1.5">
                   {selectedCourse.course_code || "—"}
                 </p>
               </div>
 
-              <div className="border border-line p-3">
+              <div className="border border-line bg-paper p-3.5">
                 <p className="label-mono">Credit</p>
 
-                <p className="text-sm font-semibold text-ink mt-1">
+                <p className="text-sm font-semibold text-ink mt-1.5">
                   {selectedCourse.credit ?? "—"}
                 </p>
               </div>
 
-              <div className="border border-line p-3">
+              <div className="border border-line bg-paper p-3.5">
                 <p className="label-mono">Semester</p>
 
-                <p className="text-sm font-semibold text-ink mt-1">
+                <p className="text-sm font-semibold text-ink mt-1.5">
                   {selectedCourse.semester ?? "—"}
                 </p>
               </div>
@@ -419,11 +459,16 @@ function Timetable() {
             />
           </div>
 
-          <p className="label-mono">
-            {filteredEntries.length}{" "}
-            {selectedCourse
-              ? "class times"
-              : `of ${entries.length} records`}
+          <p className="label-mono shrink-0">
+            <span className="font-mono text-ink">
+              {filteredEntries.length}
+            </span>
+            <span className="text-ink-mute">
+              {" "}
+              {selectedCourse
+                ? "class times"
+                : `of ${entries.length} records`}
+            </span>
           </p>
         </div>
 
@@ -442,19 +487,54 @@ function Timetable() {
             />
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
+          <div className="table-scroll">
+            <table className="data-table w-full">
               <thead>
                 <tr className="bg-paper border-b border-line">
-                  <th className={TH}>Day</th>
+                  <SortableTh
+                    label="Day"
+                    sortKey="day"
+                    activeKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggle}
+                    className={TH}
+                  />
 
                   {!selectedCourse && (
-                    <th className={TH}>Course</th>
+                    <SortableTh
+                      label="Course"
+                      sortKey="course"
+                      activeKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggle}
+                      className={TH}
+                    />
                   )}
 
-                  <th className={TH}>Time</th>
-                  <th className={TH}>Teacher</th>
-                  <th className={TH}>Room</th>
+                  <SortableTh
+                    label="Time"
+                    sortKey="time"
+                    activeKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggle}
+                    className={TH}
+                  />
+                  <SortableTh
+                    label="Teacher"
+                    sortKey="teacher"
+                    activeKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggle}
+                    className={TH}
+                  />
+                  <SortableTh
+                    label="Room"
+                    sortKey="room"
+                    activeKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggle}
+                    className={TH}
+                  />
                   <th className={TH}>Class details</th>
 
                   {canManage && (
@@ -466,13 +546,13 @@ function Timetable() {
               </thead>
 
               <tbody>
-                {filteredEntries.map((entry) => (
+                {sortedEntries.map((entry) => (
                   <tr
                     key={entry.timetable_id}
                     className="border-b border-line last:border-b-0 hover:bg-paper transition-colors"
                   >
                     <td className="px-5 py-3.5 whitespace-nowrap">
-                      <span className="inline-block border border-line px-2 py-1 label-mono text-ink-soft">
+                      <span className="inline-block border border-line bg-paper px-2 py-1 label-mono text-ink-soft">
                         {entry.day}
                       </span>
                     </td>
@@ -569,8 +649,11 @@ function Timetable() {
           onClose={() => setShowModal(false)}
           onSave={handleSave}
           saveLabel={editingId ? "Update" : "Save"}
+          saved={saved}
+          modalError={modalError}
+          saveHint="COURSE + TEACHER + ROOM + DAY + TIMES required"
         >
-          <Field label="Course">
+          <Field label="Course" error={errors.course_id}>
             <select
               name="course_id"
               value={formData.course_id}
@@ -590,7 +673,7 @@ function Timetable() {
             </select>
           </Field>
 
-          <Field label="Teacher">
+          <Field label="Teacher" error={errors.teacher_id}>
             <select
               name="teacher_id"
               value={formData.teacher_id}
@@ -610,7 +693,7 @@ function Timetable() {
             </select>
           </Field>
 
-          <Field label="Room No">
+          <Field label="Room No" error={errors.room_no}>
             <input
               type="text"
               name="room_no"
@@ -621,7 +704,7 @@ function Timetable() {
             />
           </Field>
 
-          <Field label="Day">
+          <Field label="Day" error={errors.day}>
             <select
               name="day"
               value={formData.day}
@@ -637,7 +720,7 @@ function Timetable() {
           </Field>
 
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Start Time">
+            <Field label="Start Time" error={errors.start_time}>
               <input
                 type="time"
                 name="start_time"
@@ -647,7 +730,7 @@ function Timetable() {
               />
             </Field>
 
-            <Field label="End Time">
+            <Field label="End Time" error={errors.end_time}>
               <input
                 type="time"
                 name="end_time"
@@ -664,7 +747,11 @@ function Timetable() {
         <ConfirmDialog
           title="Delete Class"
           message="Are you sure you want to remove this class from the schedule?"
-          onCancel={() => setDeletingId(null)}
+          error={deleteError}
+          onCancel={() => {
+            setDeletingId(null);
+            setDeleteError("");
+          }}
           onConfirm={handleDelete}
         />
       )}

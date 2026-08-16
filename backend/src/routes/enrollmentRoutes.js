@@ -13,6 +13,40 @@ router.get(
     enrollmentController.getEnrollments
 );
 
+// POST Self-Enrollment (Student) - creates a pending enrollment
+router.post(
+    "/enroll",
+    authMiddleware,
+    roleMiddleware("student"),
+    enrollmentController.enrollSelf
+);
+
+// PUT Review Enrollment (Admin or assigned Teacher) - approve/reject
+router.put(
+    "/:id/review",
+    authMiddleware,
+    roleMiddleware("admin", "teacher"),
+    enrollmentController.reviewEnrollment
+);
+
+// GET By Student (Admin, Teacher, Student - ownership checked in controller)
+// Must come before "/:id" so Express doesn't treat "student" as an :id value
+router.get(
+    "/student/:student_id",
+    authMiddleware,
+    roleMiddleware("admin", "teacher", "student"),
+    enrollmentController.getEnrollmentsByStudent
+);
+
+// GET By Course (Teacher roster - teacher must teach the course)
+// Must come before "/:id" so Express doesn't treat "course" as an :id value
+router.get(
+    "/course/:course_id",
+    authMiddleware,
+    roleMiddleware("teacher"),
+    enrollmentController.getEnrollmentsByCourse
+);
+
 // GET By ID (Admin, Teacher, Student - student ownership checked in controller)
 router.get(
     "/:id",

@@ -31,4 +31,12 @@ router.delete(
     userController.deleteUser
 );
 
+// RESET User Password (Admin Only)
+router.post(
+    "/:id/reset-password",
+    authMiddleware,
+    roleMiddleware("admin"),
+    userController.resetUserPassword
+);
+
 module.exports = router;

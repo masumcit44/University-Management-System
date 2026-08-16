@@ -1,4 +1,9 @@
 const Payment = require("../models/paymentModel");
+const {
+    isValidEnum,
+    PAYMENT_STATUS,
+    PAYMENT_METHODS
+} = require("../services/validationService");
 
 // =======================
 // GET All Payments (Admin only - route already enforces this,
@@ -124,6 +129,27 @@ exports.createPayment = (req, res) => {
         });
     }
 
+    if (Number(amount) <= 0) {
+        return res.status(400).json({
+            success: false,
+            message: "amount must be greater than zero"
+        });
+    }
+
+    if (!isValidEnum(status || "Pending", PAYMENT_STATUS)) {
+        return res.status(400).json({
+            success: false,
+            message: "status must be one of: Paid, Pending, Failed"
+        });
+    }
+
+    if (method && !isValidEnum(method, PAYMENT_METHODS)) {
+        return res.status(400).json({
+            success: false,
+            message: "method must be one of: Cash, Card, Bank Transfer, Mobile Banking"
+        });
+    }
+
     Payment.createPayment(
         student_id,
         amount,
@@ -165,6 +191,27 @@ exports.updatePayment = (req, res) => {
         return res.status(400).json({
             success: false,
             message: "amount and status are required"
+        });
+    }
+
+    if (Number(amount) <= 0) {
+        return res.status(400).json({
+            success: false,
+            message: "amount must be greater than zero"
+        });
+    }
+
+    if (!isValidEnum(status, PAYMENT_STATUS)) {
+        return res.status(400).json({
+            success: false,
+            message: "status must be one of: Paid, Pending, Failed"
+        });
+    }
+
+    if (method && !isValidEnum(method, PAYMENT_METHODS)) {
+        return res.status(400).json({
+            success: false,
+            message: "method must be one of: Cash, Card, Bank Transfer, Mobile Banking"
         });
     }
 

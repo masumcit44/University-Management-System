@@ -1,7 +1,37 @@
 const Attendance = require("../models/attendanceModel");
+const Enrollment = require("../models/enrollmentModel");
+const { canManageCourse } = require("../services/teacherCourseService");
+const { isValidEnum, ATTENDANCE_STATUS } = require("../services/validationService");
 
-// GET Attendance
+// GET Attendance - Admin sees all, Teacher sees only assigned courses
 exports.getAttendance = (req, res) => {
+
+    if (req.user.role === "teacher") {
+
+        if (!req.user.teacher_id) {
+            return res.status(400).json({
+                success: false,
+                message: "No linked teacher record for this account"
+            });
+        }
+
+        return Attendance.getAttendanceByTeacher(req.user.teacher_id, (err, results) => {
+
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    message: err.message
+                });
+            }
+
+            res.status(200).json({
+                success: true,
+                data: results
+            });
+
+        });
+
+    }
 
     Attendance.getAttendance((err, results) => {
 
@@ -42,9 +72,30 @@ exports.getAttendanceById = (req, res) => {
             });
         }
 
-        res.status(200).json({
-            success: true,
-            data: results[0]
+        const record = results[0];
+
+        // A teacher can only open attendance for their assigned courses
+        canManageCourse(req, record.course_id, (err2, allowed) => {
+
+            if (err2) {
+                return res.status(500).json({
+                    success: false,
+                    message: err2.message
+                });
+            }
+
+            if (!allowed) {
+                return res.status(403).json({
+                    success: false,
+                    message: "Access Forbidden. You can only view attendance for your assigned courses."
+                });
+            }
+
+            res.status(200).json({
+                success: true,
+                data: record
+            });
+
         });
 
     });
@@ -58,7 +109,7 @@ exports.getAttendanceByCourse = (req, res) => {
 
     const { course_id } = req.params;
 
-    Attendance.getAttendanceByCourse(course_id, (err, results) => {
+    canManageCourse(req, course_id, (err, allowed) => {
 
         if (err) {
             return res.status(500).json({
@@ -67,9 +118,27 @@ exports.getAttendanceByCourse = (req, res) => {
             });
         }
 
-        res.status(200).json({
-            success: true,
-            data: results
+        if (!allowed) {
+            return res.status(403).json({
+                success: false,
+                message: "Access Forbidden. You can only view attendance for your assigned courses."
+            });
+        }
+
+        Attendance.getAttendanceByCourse(course_id, (err2, results) => {
+
+            if (err2) {
+                return res.status(500).json({
+                    success: false,
+                    message: err2.message
+                });
+            }
+
+            res.status(200).json({
+                success: true,
+                data: results
+            });
+
         });
 
     });
@@ -94,6 +163,39 @@ exports.getAttendanceByStudent = (req, res) => {
         });
     }
 
+    // A teacher sees only the courses they are assigned to teach - not the
+    // student's full history across every course in the institution
+    if (req.user.role === "teacher") {
+
+        if (!req.user.teacher_id) {
+            return res.status(400).json({
+                success: false,
+                message: "No linked teacher record for this account"
+            });
+        }
+
+        return Attendance.getAttendanceByStudentForTeacher(
+            student_id,
+            req.user.teacher_id,
+            (err, results) => {
+
+                if (err) {
+                    return res.status(500).json({
+                        success: false,
+                        message: err.message
+                    });
+                }
+
+                res.status(200).json({
+                    success: true,
+                    data: results
+                });
+
+            }
+        );
+
+    }
+
     Attendance.getAttendanceByStudent(student_id, (err, results) => {
 
         if (err) {
@@ -112,7 +214,9 @@ exports.getAttendanceByStudent = (req, res) => {
 
 };
 
+// =======================
 // CREATE Attendance
+// =======================
 exports.createAttendance = (req, res) => {
 
     const {
@@ -128,11 +232,18 @@ exports.createAttendance = (req, res) => {
         });
     }
 
-    Attendance.createAttendance(
-        enrollment_id,
-        attendance_date,
-        status,
-        (err, result) => {
+    if (!isValidEnum(status, ATTENDANCE_STATUS)) {
+        return res.status(400).json({
+            success: false,
+            message: "status must be one of: Present, Absent, Late"
+        });
+    }
+
+    // Resolve the course from the enrollment so teacher ownership can be checked
+    Enrollment.query(
+        "SELECT course_id, status FROM enrollments WHERE enrollment_id = ?",
+        [enrollment_id],
+        (err, rows) => {
 
             if (err) {
                 return res.status(500).json({
@@ -141,17 +252,94 @@ exports.createAttendance = (req, res) => {
                 });
             }
 
-            res.status(201).json({
-                success: true,
-                message: "Attendance Created Successfully"
+            if (rows.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Enrollment Not Found"
+                });
+            }
+
+            if (rows[0].status !== "approved") {
+                return res.status(400).json({
+                    success: false,
+                    message: "Attendance can only be marked for approved enrollments"
+                });
+            }
+
+            // Attendance cannot be recorded for a future class date
+            if (new Date(attendance_date) > new Date()) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Attendance cannot be marked for a future date"
+                });
+            }
+
+            // One record per student per class date
+            Attendance.getByEnrollmentAndDate(enrollment_id, attendance_date, (errDup, dupRows) => {
+
+                if (errDup) {
+                    return res.status(500).json({
+                        success: false,
+                        message: errDup.message
+                    });
+                }
+
+                if (dupRows.length > 0) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Attendance already recorded for this student on that date"
+                    });
+                }
+
+            canManageCourse(req, rows[0].course_id, (err2, allowed) => {
+
+                if (err2) {
+                    return res.status(500).json({
+                        success: false,
+                        message: err2.message
+                    });
+                }
+
+                if (!allowed) {
+                    return res.status(403).json({
+                        success: false,
+                        message: "Access Forbidden. You can only mark attendance for your assigned courses."
+                    });
+                }
+
+                Attendance.createAttendance(
+                    enrollment_id,
+                    attendance_date,
+                    status,
+                    (err3) => {
+
+                        if (err3) {
+                            return res.status(500).json({
+                                success: false,
+                                message: err3.message
+                            });
+                        }
+
+                        res.status(201).json({
+                            success: true,
+                            message: "Attendance Created Successfully"
+                        });
+
+                    }
+                );
+
             });
 
-        }
-    );
+        });
+
+    }
+);
 
 };
 
+// =======================
 // UPDATE Attendance
+// =======================
 exports.updateAttendance = (req, res) => {
 
     const { id } = req.params;
@@ -169,36 +357,15 @@ exports.updateAttendance = (req, res) => {
         });
     }
 
-    Attendance.updateAttendance(
-        id,
-        enrollment_id,
-        attendance_date,
-        status,
-        (err) => {
+    if (!isValidEnum(status, ATTENDANCE_STATUS)) {
+        return res.status(400).json({
+            success: false,
+            message: "status must be one of: Present, Absent, Late"
+        });
+    }
 
-            if (err) {
-                return res.status(500).json({
-                    success: false,
-                    message: err.message
-                });
-            }
-
-            res.status(200).json({
-                success: true,
-                message: "Attendance Updated Successfully"
-            });
-
-        }
-    );
-
-};
-
-// DELETE Attendance
-exports.deleteAttendance = (req, res) => {
-
-    const { id } = req.params;
-
-    Attendance.deleteAttendance(id, (err) => {
+    // Fetch existing record to resolve the course for teacher ownership
+    Attendance.getAttendanceById(id, (err, results) => {
 
         if (err) {
             return res.status(500).json({
@@ -207,9 +374,170 @@ exports.deleteAttendance = (req, res) => {
             });
         }
 
-        res.status(200).json({
-            success: true,
-            message: "Attendance Deleted Successfully"
+        if (results.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Attendance Record Not Found"
+            });
+        }
+
+        // Attendance cannot be recorded for a future class date
+        if (new Date(attendance_date) > new Date()) {
+            return res.status(400).json({
+                success: false,
+                message: "Attendance cannot be marked for a future date"
+            });
+        }
+
+        // The target enrollment must exist and be approved
+        Enrollment.query(
+            "SELECT course_id, status FROM enrollments WHERE enrollment_id = ?",
+            [enrollment_id],
+            (errEn, enRows) => {
+
+                if (errEn) {
+                    return res.status(500).json({
+                        success: false,
+                        message: errEn.message
+                    });
+                }
+
+                if (enRows.length === 0) {
+                    return res.status(404).json({
+                        success: false,
+                        message: "Enrollment Not Found"
+                    });
+                }
+
+                if (enRows[0].status !== "approved") {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Attendance can only be marked for approved enrollments"
+                    });
+                }
+
+                // If the enrollment was changed, the teacher must manage the new course too
+                canManageCourse(req, enRows[0].course_id, (errEn2, enAllowed) => {
+
+                    if (errEn2) {
+                        return res.status(500).json({
+                            success: false,
+                            message: errEn2.message
+                        });
+                    }
+
+                    if (!enAllowed) {
+                        return res.status(403).json({
+                            success: false,
+                            message: "Access Forbidden. You can only update attendance for your assigned courses."
+                        });
+                    }
+
+                    canManageCourse(req, results[0].course_id, (err2, allowed) => {
+
+                        if (err2) {
+                            return res.status(500).json({
+                                success: false,
+                                message: err2.message
+                            });
+                        }
+
+                        if (!allowed) {
+                            return res.status(403).json({
+                                success: false,
+                                message: "Access Forbidden. You can only update attendance for your assigned courses."
+                            });
+                        }
+
+                        Attendance.updateAttendance(
+                            id,
+                            enrollment_id,
+                            attendance_date,
+                            status,
+                            (err3) => {
+
+                                if (err3) {
+                                    return res.status(500).json({
+                                        success: false,
+                                        message: err3.message
+                                    });
+                                }
+
+                                res.status(200).json({
+                                    success: true,
+                                    message: "Attendance Updated Successfully"
+                                });
+
+                            }
+                        );
+
+                    });
+
+                });
+
+            }
+        );
+
+    });
+
+};
+
+// =======================
+// DELETE Attendance
+// =======================
+exports.deleteAttendance = (req, res) => {
+
+    const { id } = req.params;
+
+    // Fetch existing record to resolve the course for teacher ownership
+    Attendance.getAttendanceById(id, (err, results) => {
+
+        if (err) {
+            return res.status(500).json({
+                success: false,
+                message: err.message
+            });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Attendance Record Not Found"
+            });
+        }
+
+        canManageCourse(req, results[0].course_id, (err2, allowed) => {
+
+            if (err2) {
+                return res.status(500).json({
+                    success: false,
+                    message: err2.message
+                });
+            }
+
+            if (!allowed) {
+                return res.status(403).json({
+                    success: false,
+                    message: "Access Forbidden. You can only delete attendance for your assigned courses."
+                });
+            }
+
+            Attendance.deleteAttendance(id, (err3) => {
+
+                if (err3) {
+                    return res.status(500).json({
+                        success: false,
+                        message: err3.message
+                    });
+                }
+
+                res.status(200).json({
+                    success: true,
+                    message: "Attendance Deleted Successfully"
+                });
+
+            });
+
         });
 
     });

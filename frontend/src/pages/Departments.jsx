@@ -27,6 +27,10 @@ function Departments() {
   const [deletingId, setDeletingId] = useState(null);
 
   const [formData, setFormData] = useState(EMPTY_FORM);
+  const [errors, setErrors] = useState({});
+  const [modalError, setModalError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     fetchDepartments();
@@ -56,6 +60,9 @@ function Departments() {
   const openCreateModal = () => {
     setFormData(EMPTY_FORM);
     setEditingId(null);
+    setErrors({});
+    setModalError("");
+    setSaved(false);
     setShowModal(true);
   };
 
@@ -66,14 +73,20 @@ function Departments() {
       department_head: department.department_head || "",
     });
     setEditingId(department.department_id);
+    setErrors({});
+    setModalError("");
+    setSaved(false);
     setShowModal(true);
   };
 
   const handleSave = async () => {
-    if (!formData.department_name || !formData.department_code) {
-      alert("Department name and code are required");
-      return;
-    }
+    const newErrors = {};
+    if (!formData.department_name) newErrors.department_name = "Department name is required";
+    if (!formData.department_code) newErrors.department_code = "Department code is required";
+
+    setErrors(newErrors);
+    setModalError("");
+    if (Object.keys(newErrors).length) return;
 
     try {
       if (editingId) {
@@ -82,14 +95,17 @@ function Departments() {
         await api.post("/departments", formData);
       }
 
-      setShowModal(false);
-      setEditingId(null);
-      setFormData(EMPTY_FORM);
-
-      fetchDepartments();
+      setSaved(true);
+      setTimeout(() => {
+        setShowModal(false);
+        setEditingId(null);
+        setFormData(EMPTY_FORM);
+        setSaved(false);
+        fetchDepartments();
+      }, 600);
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to save department");
+      setModalError(err.response?.data?.message || "Failed to save department");
     }
   };
 
@@ -97,10 +113,11 @@ function Departments() {
     try {
       await api.delete(`/departments/${deletingId}`);
       setDeletingId(null);
+      setDeleteError("");
       fetchDepartments();
     } catch (err) {
       console.error(err);
-      alert(
+      setDeleteError(
         err.response?.data?.message ||
           "Failed to delete department. It may still have students, teachers or courses attached."
       );
@@ -142,8 +159,13 @@ function Departments() {
           />
         </div>
 
-        <p className="label-mono">
-          {filteredDepartments.length} of {departments.length} records
+        <p className="label-mono shrink-0">
+          <span className="font-mono text-ink">
+            {filteredDepartments.length}
+          </span>
+          <span className="text-ink-mute">
+            {" "}of {departments.length} records
+          </span>
         </p>
       </div>
 
@@ -176,7 +198,7 @@ function Departments() {
           {filteredDepartments.map((department, index) => (
             <div
               key={department.department_id}
-              className="surface p-5 flex flex-col relative group hover:border-ink transition-colors"
+              className="surface p-5 flex flex-col relative group hover:border-ink hover:shadow-[3px_3px_0_0_rgba(11,11,11,0.06)] transition-all duration-150"
             >
               {/* Index number + code chip */}
               <div className="flex items-start justify-between mb-4">
@@ -184,30 +206,31 @@ function Departments() {
                   {String(index + 1).padStart(2, "0")}
                 </span>
 
-                <span className="inline-block border border-line px-2 py-1 label-mono text-ink-soft">
+                <span className="inline-flex items-center border border-line bg-paper px-2 py-1 label-mono text-ink-soft">
                   {department.department_code}
                 </span>
               </div>
 
-              {/* Name */}
-              <h3 className="font-display font-bold text-lg text-ink tracking-tight leading-snug">
-                {department.department_name}
-              </h3>
+              {/* Name + head */}
+              <div className="flex-1 mb-5">
+                <h3 className="font-display font-bold text-lg text-ink tracking-tight leading-snug">
+                  {department.department_name}
+                </h3>
 
-              {/* Head */}
-              <p className="text-[0.8125rem] text-ink-soft mt-2">
-                {department.department_head ? (
-                  <>
-                    <span className="label-mono">Head </span>
-                    {department.department_head}
-                  </>
-                ) : (
-                  <span className="label-mono">No head assigned</span>
-                )}
-              </p>
+                <p className="text-[0.8125rem] text-ink-soft mt-2">
+                  {department.department_head ? (
+                    <>
+                      <span className="label-mono text-ink-mute">Head </span>
+                      <span className="text-ink">{department.department_head}</span>
+                    </>
+                  ) : (
+                    <span className="label-mono">No head assigned</span>
+                  )}
+                </p>
+              </div>
 
-              {/* Actions - revealed on hover, top-right */}
-              <div className="flex gap-1.5 mt-5 pt-4 border-t border-line">
+              {/* Actions - flex footer, pinned to the bottom */}
+              <div className="flex gap-1.5 pt-4 border-t border-line">
                 <button
                   onClick={() => openEditModal(department)}
                   className="flex-1 flex items-center justify-center gap-1.5 py-1.5 border border-line text-ink-mute hover:border-accent hover:text-accent hover:bg-accent-soft transition-colors label-mono"
@@ -240,8 +263,11 @@ function Departments() {
           onClose={() => setShowModal(false)}
           onSave={handleSave}
           saveLabel={editingId ? "Update" : "Save"}
+          saved={saved}
+          modalError={modalError}
+          saveHint="DEPARTMENT NAME + CODE required"
         >
-          <Field label="Department Name">
+          <Field label="Department Name" error={errors.department_name}>
             <input
               type="text"
               name="department_name"
@@ -252,7 +278,7 @@ function Departments() {
             />
           </Field>
 
-          <Field label="Department Code">
+          <Field label="Department Code" error={errors.department_code}>
             <input
               type="text"
               name="department_code"
@@ -280,7 +306,11 @@ function Departments() {
         <ConfirmDialog
           title="Delete Department"
           message="Are you sure you want to delete this department? Students, teachers and courses linked to it will block the deletion."
-          onCancel={() => setDeletingId(null)}
+          error={deleteError}
+          onCancel={() => {
+            setDeletingId(null);
+            setDeleteError("");
+          }}
           onConfirm={handleDelete}
         />
       )}

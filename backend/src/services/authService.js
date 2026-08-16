@@ -154,6 +154,17 @@ exports.loginUser = (email, password, callback) => {
             return callback(new Error("Invalid Email or Password"), null);
         }
 
+        // Disabled accounts are refused even with a correct password
+        if (Number(user.is_active) !== 1) {
+            return callback(
+                new Error("Account is disabled. Please contact the administrator."),
+                null
+            );
+        }
+
+        // Track last successful login (non-blocking)
+        User.updateLastLogin(user.user_id, () => {});
+
         // Look up which student/teacher record belongs to this user,
         // so the frontend/backend both know "who" this login actually is
         const attachOwnerId = (ownerKey, callbackInner) => {
@@ -219,5 +230,72 @@ exports.loginUser = (email, password, callback) => {
         });
 
     });
+
+};
+
+// Change Own Password (authenticated user)
+exports.changePassword = async (
+    userId,
+    currentPassword,
+    newPassword,
+    callback
+) => {
+
+    try {
+
+        User.findUserById(userId, async (err, results) => {
+
+            if (err) return callback(err);
+
+            if (results.length === 0) {
+                return callback(new Error("User not found"), null);
+            }
+
+            const user = results[0];
+
+            const isMatch = await bcrypt.compare(currentPassword, user.password);
+
+            if (!isMatch) {
+                return callback(new Error("Current password is incorrect"), null);
+            }
+
+            const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+            User.updatePassword(userId, hashedPassword, (err2) => {
+                if (err2) return callback(err2);
+                callback(null, { userId });
+            });
+
+        });
+
+    } catch (error) {
+
+        callback(error, null);
+
+    }
+
+};
+
+// Reset Password (admin sets a new one without the old password)
+exports.resetPassword = async (
+    userId,
+    newPassword,
+    callback
+) => {
+
+    try {
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        User.updatePassword(userId, hashedPassword, (err) => {
+            if (err) return callback(err);
+            callback(null, { userId });
+        });
+
+    } catch (error) {
+
+        callback(error, null);
+
+    }
 
 };

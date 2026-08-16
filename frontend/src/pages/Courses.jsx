@@ -19,6 +19,18 @@ const EMPTY_FORM = {
   department_id: "",
 };
 
+// Status badge colours - approved courses are simply "enrolled" so only
+// non-approved states are flagged on the student course cards
+const STATUS_BADGE = {
+  pending: "badge-warn",
+  rejected: "badge-danger",
+};
+
+const STATUS_DOTS = {
+  pending: "bg-warn",
+  rejected: "bg-danger",
+};
+
 // Fallback monogram when a department has no department_code yet
 // e.g. "Computer Science and Engineering" -> "CSE"
 const STOP_WORDS = new Set(["and", "of", "the", "for", "in"]);
@@ -34,7 +46,15 @@ function fallbackCode(name) {
 }
 
 function Courses() {
+  // Students see only the courses they're enrolled in ("My Courses") and
+  // can't create/edit/delete - admin/teacher keep the full directory, but only
+  // admin can create/edit/delete.
+  const currentUser = JSON.parse(localStorage.getItem("user") || "null");
+  const isStudent = currentUser?.role === "student";
+  const isAdmin = currentUser?.role === "admin";
+
   const [courses, setCourses] = useState([]);
+  const [catalog, setCatalog] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -45,22 +65,39 @@ function Courses() {
   const [editingId, setEditingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
 
+  const [showEnrollModal, setShowEnrollModal] = useState(false);
+  const [enrollForm, setEnrollForm] = useState({ course_id: "", session: "" });
+
   const [formData, setFormData] = useState(EMPTY_FORM);
+  const [errors, setErrors] = useState({});
+  const [modalError, setModalError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [enrollErrors, setEnrollErrors] = useState({});
+  const [enrollError, setEnrollError] = useState("");
+  const [enrollSaved, setEnrollSaved] = useState(false);
+  const [enrollSubmitting, setEnrollSubmitting] = useState(false);
 
   useEffect(() => {
     fetchCourses();
     fetchDepartments();
+    if (isStudent) fetchCatalog();
   }, []);
 
   const fetchCourses = async () => {
     try {
       setError("");
 
-      const res = await api.get("/courses");
+      const res = isStudent
+        ? await api.get(`/enrollments/student/${currentUser.student_id}`)
+        : await api.get("/courses");
+
       setCourses(res.data.data);
     } catch (err) {
       console.error(err);
-      setError("Failed to load courses");
+      setError(
+        isStudent ? "Failed to load your courses" : "Failed to load courses"
+      );
     } finally {
       setLoading(false);
     }
@@ -75,6 +112,61 @@ function Courses() {
     }
   };
 
+  // Full course directory - lets students pick a course to request enrollment in
+  const fetchCatalog = async () => {
+    try {
+      const res = await api.get("/courses");
+      setCatalog(res.data.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleEnrollChange = (e) => {
+    setEnrollForm({
+      ...enrollForm,
+      [e.target.name]: e.target.value,
+    });
+  };
+
+  const openEnrollModal = () => {
+    setEnrollForm({ course_id: "", session: "" });
+    setEnrollErrors({});
+    setEnrollError("");
+    setEnrollSaved(false);
+    setEnrollSubmitting(false);
+    setShowEnrollModal(true);
+  };
+
+  const handleEnroll = async () => {
+    if (enrollSubmitting) return;
+
+    const newErrors = {};
+    if (!enrollForm.course_id) newErrors.course_id = "Select a course";
+    if (!enrollForm.session) newErrors.session = "Session is required";
+
+    setEnrollErrors(newErrors);
+    setEnrollError("");
+    if (Object.keys(newErrors).length) return;
+
+    setEnrollSubmitting(true);
+    try {
+      await api.post("/enrollments/enroll", enrollForm);
+      setEnrollSaved(true);
+      setTimeout(() => {
+        setShowEnrollModal(false);
+        setEnrollForm({ course_id: "", session: "" });
+        setEnrollSaved(false);
+        setEnrollSubmitting(false);
+        fetchCourses();
+      }, 600);
+    } catch (err) {
+      console.error(err);
+      setEnrollSubmitting(false);
+      setEnrollError(err.response?.data?.message || "Failed to submit enrollment");
+    }
+  };
+
   const handleChange = (e) => {
     setFormData({
       ...formData,
@@ -82,9 +174,22 @@ function Courses() {
     });
   };
 
+  // Pending/Rejected flag shown on student course cards (approved = enrolled)
+  const statusBadge = (status) => (
+    <span className={`badge ${STATUS_BADGE[status] || "badge-neutral"}`}>
+      <span
+        className={`w-1.5 h-1.5 shrink-0 ${STATUS_DOTS[status] || "bg-ink-mute"}`}
+      />
+      {status === "pending" ? "Pending" : "Rejected"}
+    </span>
+  );
+
   const openCreateModal = () => {
     setFormData(EMPTY_FORM);
     setEditingId(null);
+    setErrors({});
+    setModalError("");
+    setSaved(false);
     setShowModal(true);
   };
 
@@ -97,20 +202,23 @@ function Courses() {
       department_id: course.department_id,
     });
     setEditingId(course.course_id);
+    setErrors({});
+    setModalError("");
+    setSaved(false);
     setShowModal(true);
   };
 
   const handleSave = async () => {
-    if (
-      !formData.course_name ||
-      !formData.course_code ||
-      !formData.credit ||
-      !formData.semester ||
-      !formData.department_id
-    ) {
-      alert("All fields are required");
-      return;
-    }
+    const newErrors = {};
+    if (!formData.course_name) newErrors.course_name = "Course name is required";
+    if (!formData.course_code) newErrors.course_code = "Course code is required";
+    if (!formData.credit) newErrors.credit = "Credit is required";
+    if (!formData.semester) newErrors.semester = "Semester is required";
+    if (!formData.department_id) newErrors.department_id = "Select a department";
+
+    setErrors(newErrors);
+    setModalError("");
+    if (Object.keys(newErrors).length) return;
 
     try {
       if (editingId) {
@@ -119,14 +227,17 @@ function Courses() {
         await api.post("/courses", formData);
       }
 
-      setShowModal(false);
-      setEditingId(null);
-      setFormData(EMPTY_FORM);
-
-      fetchCourses();
+      setSaved(true);
+      setTimeout(() => {
+        setShowModal(false);
+        setEditingId(null);
+        setFormData(EMPTY_FORM);
+        setSaved(false);
+        fetchCourses();
+      }, 600);
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to save course");
+      setModalError(err.response?.data?.message || "Failed to save course");
     }
   };
 
@@ -134,10 +245,11 @@ function Courses() {
     try {
       await api.delete(`/courses/${deletingId}`);
       setDeletingId(null);
+      setDeleteError("");
       fetchCourses();
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to delete course");
+      setDeleteError(err.response?.data?.message || "Failed to delete course");
     }
   };
 
@@ -147,6 +259,21 @@ function Courses() {
     departments.forEach((d) => map.set(d.department_id, d.department_code));
     return map;
   }, [departments]);
+
+  // Course ids the student is already pending/approved in - hidden from the
+  // enrollment picker (rejected courses can be re-requested)
+  const enrolledCourseIds = useMemo(() => {
+    const set = new Set();
+    courses.forEach((c) => {
+      if (c.status !== "rejected") set.add(c.course_id);
+    });
+    return set;
+  }, [courses]);
+
+  const availableCatalog = useMemo(
+    () => catalog.filter((c) => !enrolledCourseIds.has(c.course_id)),
+    [catalog, enrolledCourseIds]
+  );
 
   const term = searchTerm.trim().toLowerCase();
 
@@ -247,10 +374,14 @@ function Courses() {
   return (
     <MainLayout>
       <PageHeader
-        title="Courses"
-        subtitle="Every course offered across the departments, grouped by department and semester."
-        actionLabel="Add Course"
-        onAction={openCreateModal}
+        title={isStudent ? "My Courses" : "Courses"}
+        subtitle={
+          isStudent
+            ? "Every course you're currently enrolled in, grouped by department and semester."
+            : "Every course offered across the departments, grouped by department and semester."
+        }
+        actionLabel={isStudent ? "Enroll in Course" : isAdmin ? "Add Course" : undefined}
+        onAction={isStudent ? openEnrollModal : isAdmin ? openCreateModal : undefined}
       />
 
       <div className="surface">
@@ -272,14 +403,19 @@ function Courses() {
           </div>
 
           <div className="flex items-center gap-4">
-            <p className="label-mono">
-              {filteredCourses.length} of {courses.length} records
+            <p className="label-mono shrink-0">
+              <span className="font-mono text-ink">
+                {filteredCourses.length}
+              </span>
+              <span className="text-ink-mute">
+                {" "}of {courses.length} records
+              </span>
             </p>
 
             {groups.length > 1 && (
               <button
                 onClick={toggleAll}
-                className="btn-ghost !py-1.5 !px-3 text-[0.6875rem]"
+                className="btn-ghost btn-pushable !py-1.5 !px-3 text-[0.6875rem]"
               >
                 {allCollapsed ? "Expand All" : "Collapse All"}
               </button>
@@ -289,7 +425,7 @@ function Courses() {
 
         {/* Department quick-jump strip */}
         {!loading && !error && groups.length > 1 && (
-          <div className="flex items-center gap-1.5 px-5 py-3 border-b border-line overflow-x-auto">
+          <div className="flex items-center gap-1.5 px-5 py-3 border-b border-line overflow-x-auto bg-paper">
             <span className="label-mono shrink-0 mr-1">Jump to</span>
 
             {groups.map((g) => (
@@ -315,12 +451,16 @@ function Courses() {
               icon={BookOpen}
               title={
                 courses.length === 0
-                  ? "No courses found"
+                  ? isStudent
+                    ? "You're not enrolled in any courses yet"
+                    : "No courses found"
                   : "No courses match your search"
               }
               hint={
                 courses.length === 0
-                  ? "Add the first course to get started"
+                  ? isStudent
+                    ? "Use 'Enroll in Course' to request a spot"
+                    : "Add the first course to get started"
                   : "Try a different name, code or department"
               }
             />
@@ -342,7 +482,7 @@ function Courses() {
                     onClick={() => toggleDept(dept.department_id)}
                     className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-paper transition-colors"
                   >
-                    <span className="label-mono w-6 shrink-0 text-ink-mute">
+                    <span className="label-mono w-8 shrink-0 text-center border border-line bg-paper py-1 text-ink-soft">
                       {String(index + 1).padStart(2, "0")}
                     </span>
 
@@ -376,8 +516,8 @@ function Courses() {
                     <div className="px-5 pb-6 sm:pl-[5.25rem] space-y-6">
                       {dept.semesters.map((sem) => (
                         <div key={sem.semester}>
-                          <div className="flex items-center gap-2.5 mb-2.5">
-                            <Layers size={12} className="text-ink-mute shrink-0" />
+                          <div className="flex items-center gap-2.5 mb-3 px-3 py-2 border border-line bg-paper">
+                            <Layers size={12} className="text-accent shrink-0" />
                             <span className="label-mono whitespace-nowrap">
                               SEM {String(sem.semester).padStart(2, "0")}
                             </span>
@@ -392,7 +532,7 @@ function Courses() {
                             {sem.courses.map((course) => (
                               <div
                                 key={course.course_id}
-                                className="group relative surface p-3.5 hover:border-ink transition-colors"
+                                className="group relative surface p-3.5 hover:border-ink hover:shadow-[3px_3px_0_0_rgba(11,11,11,0.06)] transition-all duration-150"
                               >
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="min-w-0">
@@ -414,11 +554,20 @@ function Courses() {
                                     #{String(course.course_id).padStart(3, "0")}
                                   </span>
 
-                                  <div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                                    <RowActions
-                                      onEdit={() => openEditModal(course)}
-                                      onDelete={() => setDeletingId(course.course_id)}
-                                    />
+                                  <div className="flex items-center gap-2">
+                                    {isStudent &&
+                                      course.status &&
+                                      course.status !== "approved" &&
+                                      statusBadge(course.status)}
+
+                                    {isAdmin && (
+                                      <div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                                        <RowActions
+                                          onEdit={() => openEditModal(course)}
+                                          onDelete={() => setDeletingId(course.course_id)}
+                                        />
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               </div>
@@ -435,14 +584,70 @@ function Courses() {
         )}
       </div>
 
-      {showModal && (
+      {isStudent && showEnrollModal && (
+        <Modal
+          title="Enroll in a Course"
+          onClose={() => setShowEnrollModal(false)}
+          onSave={handleEnroll}
+          saveLabel="Request Enrollment"
+          saved={enrollSaved}
+          modalError={enrollError}
+          saveHint="COURSE + SESSION required"
+        >
+          {availableCatalog.length === 0 ? (
+            <p className="text-[0.8125rem] text-ink-soft">
+              You already have a pending or approved enrollment in every course.
+            </p>
+          ) : (
+            <>
+              <Field label="Course" error={enrollErrors.course_id}>
+                <select
+                  name="course_id"
+                  value={enrollForm.course_id}
+                  onChange={handleEnrollChange}
+                  className={CONTROL_CLASS}
+                >
+                  <option value="">Select Course</option>
+                  {availableCatalog.map((c) => (
+                    <option key={c.course_id} value={c.course_id}>
+                      {c.course_name} ({c.course_code}) · SEM{" "}
+                      {String(c.semester).padStart(2, "0")}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Session" error={enrollErrors.session}>
+                <input
+                  type="text"
+                  name="session"
+                  placeholder="e.g. 2026"
+                  value={enrollForm.session}
+                  onChange={handleEnrollChange}
+                  className={CONTROL_CLASS}
+                />
+              </Field>
+
+              <p className="text-[0.75rem] text-ink-mute">
+                Your request will show as pending until an admin or your teacher
+                approves it.
+              </p>
+            </>
+          )}
+        </Modal>
+      )}
+
+      {!isStudent && showModal && (
         <Modal
           title={editingId ? "Edit Course" : "Add Course"}
           onClose={() => setShowModal(false)}
           onSave={handleSave}
           saveLabel={editingId ? "Update" : "Save"}
+          saved={saved}
+          modalError={modalError}
+          saveHint="NAME + CODE + CREDIT + SEMESTER required"
         >
-          <Field label="Course Name">
+          <Field label="Course Name" error={errors.course_name}>
             <input
               type="text"
               name="course_name"
@@ -453,7 +658,7 @@ function Courses() {
             />
           </Field>
 
-          <Field label="Course Code">
+          <Field label="Course Code" error={errors.course_code}>
             <input
               type="text"
               name="course_code"
@@ -465,7 +670,7 @@ function Courses() {
           </Field>
 
           <div className="grid grid-cols-2 gap-x-4">
-            <Field label="Credit">
+            <Field label="Credit" error={errors.credit}>
               <input
                 type="number"
                 step="0.25"
@@ -477,7 +682,7 @@ function Courses() {
               />
             </Field>
 
-            <Field label="Semester">
+            <Field label="Semester" error={errors.semester}>
               <input
                 type="number"
                 name="semester"
@@ -489,7 +694,7 @@ function Courses() {
             </Field>
           </div>
 
-          <Field label="Department">
+          <Field label="Department" error={errors.department_id}>
             <select
               name="department_id"
               value={formData.department_id}
@@ -507,11 +712,15 @@ function Courses() {
         </Modal>
       )}
 
-      {deletingId && (
+      {!isStudent && deletingId && (
         <ConfirmDialog
           title="Delete Course"
           message="Are you sure you want to delete this course? Its enrollments, exams and timetable entries will be deleted too."
-          onCancel={() => setDeletingId(null)}
+          error={deleteError}
+          onCancel={() => {
+            setDeletingId(null);
+            setDeleteError("");
+          }}
           onConfirm={handleDelete}
         />
       )}

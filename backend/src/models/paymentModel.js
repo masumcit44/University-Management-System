@@ -52,15 +52,18 @@ const Payment = {
     getPaymentsByStudent: (student_id, callback) => {
         const sql = `
             SELECT
-                payment_id,
-                student_id,
-                amount,
-                status,
-                payment_date,
-                method
+                payments.payment_id,
+                payments.student_id,
+                students.student_name,
+                payments.amount,
+                payments.status,
+                payments.payment_date,
+                payments.method
             FROM payments
-            WHERE student_id = ?
-            ORDER BY payment_date DESC
+            JOIN students
+            ON payments.student_id = students.student_id
+            WHERE payments.student_id = ?
+            ORDER BY payments.payment_date DESC
         `;
 
         db.query(sql, [student_id], callback);

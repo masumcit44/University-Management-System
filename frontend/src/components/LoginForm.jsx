@@ -84,12 +84,12 @@ function LoginForm() {
       {error && (
         <div
           role="alert"
-          className="flex items-start gap-2.5 border border-danger bg-danger-soft px-3.5 py-3 mb-6"
+          className="flex items-start gap-2.5 border border-danger border-l-4 bg-danger-soft pl-3 pr-3.5 py-3 mb-6"
         >
           <AlertTriangle
             size={15}
             strokeWidth={2}
-            className="text-danger shrink-0 mt-0.5"
+            className="text-danger shrink-0 mt-px"
           />
           <p className="text-[0.8125rem] text-danger leading-relaxed">
             {error}
@@ -98,7 +98,7 @@ function LoginForm() {
       )}
 
       <div className="mb-5">
-        <label htmlFor="email" className="label-mono block mb-1.5">
+        <label htmlFor="email" className="label-mono block mb-2">
           Email
         </label>
 
@@ -107,14 +107,14 @@ function LoginForm() {
           type="email"
           autoComplete="email"
           placeholder="you@easternuni.edu.bd"
-          className="control"
+          className={`control ${error ? "!border-danger" : ""}`}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
       </div>
 
       <div className="mb-8">
-        <label htmlFor="password" className="label-mono block mb-1.5">
+        <label htmlFor="password" className="label-mono block mb-2">
           Password
         </label>
 
@@ -124,7 +124,7 @@ function LoginForm() {
             type={showPassword ? "text" : "password"}
             autoComplete="current-password"
             placeholder="••••••••"
-            className="control !pr-11"
+            className={`control !pr-11 ${error ? "!border-danger" : ""}`}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
@@ -133,7 +133,7 @@ function LoginForm() {
             type="button"
             onClick={() => setShowPassword(!showPassword)}
             aria-label={showPassword ? "Hide password" : "Show password"}
-            className="absolute right-0 top-0 h-full px-3 text-ink-mute hover:text-ink transition-colors"
+            className="absolute right-0 top-0 h-full px-3 flex items-center justify-center text-ink-mute hover:text-ink transition-colors"
           >
             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
@@ -143,7 +143,7 @@ function LoginForm() {
       <button
         type="submit"
         disabled={loading}
-        className="btn-solid w-full justify-center !py-3.5 disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:!bg-ink disabled:hover:!border-ink"
+        className="btn-solid btn-pushable w-full justify-center !py-3.5 disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:!bg-ink disabled:hover:!border-ink"
       >
         {loading ? "Signing in" : "Sign in"}
         {!loading && <ArrowRight size={15} strokeWidth={2.5} />}

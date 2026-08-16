@@ -10,6 +10,10 @@ import EmptyState from "../components/EmptyState";
 const SCALE_MAX = 4;
 
 function Cgpa() {
+  // Students are locked to their own CGPA - no student picker (backend blocks others too)
+  const currentUser = JSON.parse(localStorage.getItem("user") || "null");
+  const isStudent = currentUser?.role === "student";
+
   const [students, setStudents] = useState([]);
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [studentIdInput, setStudentIdInput] = useState("");
@@ -19,6 +23,17 @@ function Cgpa() {
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
+    // Students auto-load their own CGPA on mount - no picker to change student
+    if (isStudent) {
+      if (currentUser.student_id) {
+        const id = String(currentUser.student_id);
+        setSelectedStudentId(id);
+        setStudentIdInput(id);
+        handleCheckCgpa(id);
+      }
+      return;
+    }
+
     fetchStudents();
   }, []);
 
@@ -51,8 +66,9 @@ function Cgpa() {
     setErrorMessage("");
   };
 
-  const handleCheckCgpa = async () => {
-    const studentId = studentIdInput.trim() || selectedStudentId;
+  const handleCheckCgpa = async (overrideId) => {
+    const studentId =
+      (overrideId || studentIdInput).trim() || selectedStudentId;
 
     if (!studentId) {
       setErrorMessage("Select a student or enter a Student ID first.");
@@ -107,69 +123,104 @@ function Cgpa() {
       <div className="grid lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] gap-8 items-start">
         {/* Query panel */}
         <div className="surface p-6">
-          <label className="label-mono block" htmlFor="cgpa-student">
-            Student
-          </label>
+          {isStudent ? (
+            <>
+              <label className="label-mono block">Student</label>
 
-          <select
-            id="cgpa-student"
-            value={selectedStudentId}
-            onChange={handleStudentSelect}
-            className="control mt-1.5"
-          >
-            <option value="">Select Student</option>
+              <div className="flex items-center justify-between gap-2 border border-line bg-paper px-3 py-2.5 mt-1.5">
+                <span className="text-[0.8125rem] font-semibold text-ink truncate">
+                  My CGPA
+                </span>
+                <span className="font-mono text-ink-mute text-xs">
+                  #{currentUser.student_id}
+                </span>
+              </div>
 
-            {students.map((student) => (
-              <option
-                key={student.student_id}
-                value={student.student_id}
+              <button
+                onClick={() => handleCheckCgpa()}
+                disabled={loading}
+                className="btn-solid btn-pushable w-full mt-4 justify-center disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {student.student_name}
-              </option>
-            ))}
-          </select>
+                <Search size={15} />
+                {loading ? "Calculating..." : "Recalculate"}
+              </button>
 
-          <div className="flex items-center gap-3 my-4">
-            <span className="h-px flex-1 bg-line" />
-            <span className="label-mono text-ink-mute">or</span>
-            <span className="h-px flex-1 bg-line" />
-          </div>
+              <p className="text-xs text-ink-mute mt-4 border-l-2 border-line pl-3">
+                You can only view your own CGPA. Only results linked to a{" "}
+                <span className="text-ink">Final</span> exam contribute to the
+                average.
+              </p>
+            </>
+          ) : (
+            <>
+              <label className="label-mono block" htmlFor="cgpa-student">
+                Student
+              </label>
 
-          <label className="label-mono block" htmlFor="cgpa-student-id">
-            Student ID
-          </label>
+              <select
+                id="cgpa-student"
+                value={selectedStudentId}
+                onChange={handleStudentSelect}
+                className="control mt-1.5"
+              >
+                <option value="">Select Student</option>
 
-          <input
-            id="cgpa-student-id"
-            type="text"
-            value={studentIdInput}
-            onChange={handleStudentIdChange}
-            onKeyDown={handleStudentIdKeyDown}
-            placeholder="Enter Student ID"
-            className="control mt-1.5"
-            autoComplete="off"
-          />
+                {students.map((student) => (
+                  <option
+                    key={student.student_id}
+                    value={student.student_id}
+                  >
+                    {student.student_name}
+                  </option>
+                ))}
+              </select>
 
-          <button
-            onClick={handleCheckCgpa}
-            disabled={loading}
-            className="btn-solid w-full mt-4 justify-center inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Search size={15} />
-            {loading ? "Calculating..." : "Calculate"}
-          </button>
+              <div className="flex items-center gap-3 my-4">
+                <span className="h-px flex-1 bg-line" />
+                <span className="label-mono text-ink-mute">or</span>
+                <span className="h-px flex-1 bg-line" />
+              </div>
+
+              <label className="label-mono block" htmlFor="cgpa-student-id">
+                Student ID
+              </label>
+
+              <input
+                id="cgpa-student-id"
+                type="text"
+                value={studentIdInput}
+                onChange={handleStudentIdChange}
+                onKeyDown={handleStudentIdKeyDown}
+                placeholder="Enter Student ID"
+                className="control mt-1.5"
+                autoComplete="off"
+              />
+
+              <button
+                onClick={() => handleCheckCgpa()}
+                disabled={loading}
+                className="btn-solid btn-pushable w-full mt-4 justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Search size={15} />
+                {loading ? "Calculating..." : "Calculate"}
+              </button>
+
+              <p className="text-xs text-ink-mute mt-4 border-l-2 border-line pl-3">
+                Select a student from the list or enter their Student ID. Only
+                results linked to a <span className="text-ink">Final</span> exam
+                contribute to the average.
+              </p>
+            </>
+          )}
 
           {errorMessage && (
-            <p className="text-xs text-red-700 mt-3" role="alert">
+            <p
+              className="text-xs text-danger mt-3 border-l-2 border-danger pl-3"
+              role="alert"
+            >
               {errorMessage}
             </p>
           )}
-
-          <p className="text-xs text-ink-mute mt-4 border-l-2 border-line pl-3">
-            Select a student from the list or enter their Student ID. Only
-            results linked to a <span className="text-ink">Final</span> exam
-            contribute to the average.
-          </p>
         </div>
 
         {/* Readout panel */}
@@ -223,6 +274,10 @@ function Cgpa() {
               <p className="label-mono mt-8 pt-5 border-t border-line">
                 Based on {cgpaData.total_courses} course
                 {cgpaData.total_courses > 1 ? "s" : ""}
+                {cgpaData.total_credits != null && (
+                  <> &middot; {cgpaData.total_credits} credit
+                  {Number(cgpaData.total_credits) > 1 ? "s" : ""}</>
+                )}
               </p>
             </div>
           ) : (

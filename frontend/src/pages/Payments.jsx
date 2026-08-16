@@ -1,6 +1,7 @@
 import MainLayout from "../layouts/MainLayout";
 import { useEffect, useState } from "react";
 import api from "../services/api";
+import { toDateInput } from "../services/date";
 import { Wallet, Search } from "lucide-react";
 
 import PageHeader from "../components/PageHeader";
@@ -9,9 +10,13 @@ import EmptyState from "../components/EmptyState";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import RowActions from "../components/RowActions";
+import SortableTh from "../components/SortableTh";
 import Field, { CONTROL_CLASS } from "../components/Field";
+import Pager from "../components/Pager";
+import { useSort } from "../services/useSort";
+import { usePagination } from "../services/usePagination";
 
-// Small colour square per status - no pills, keeps the ledger look
+// Colour square per status - rendered inside the status badge
 const STATUS_DOTS = {
   Paid: "bg-accent",
   Pending: "bg-warn",
@@ -26,10 +31,15 @@ const EMPTY_FORM = {
 };
 
 // Shared table cell styles - reused by every column
-const TH = "text-left px-5 py-3 label-mono whitespace-nowrap";
-const TD = "px-5 py-3.5 text-[0.8125rem] text-ink-soft whitespace-nowrap";
+const TH = "text-left px-5 py-3 label-mono whitespace-nowrap align-middle";
+const TD = "px-5 py-3.5 text-[0.8125rem] text-ink-soft whitespace-nowrap align-middle";
 
 function Payments() {
+  // Students see only their own payment history - read-only (backend enforces too)
+  const currentUser = JSON.parse(localStorage.getItem("user") || "null");
+  const isStudent = currentUser?.role === "student";
+  const canManage = !isStudent;
+
   const [payments, setPayments] = useState([]);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -41,20 +51,28 @@ function Payments() {
   const [deletingId, setDeletingId] = useState(null);
 
   const [formData, setFormData] = useState(EMPTY_FORM);
+  const [errors, setErrors] = useState({});
+  const [modalError, setModalError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     fetchPayments();
-    fetchStudents();
+    if (!isStudent) fetchStudents();
   }, []);
 
   const fetchPayments = async () => {
     try {
       setError("");
-      const res = await api.get("/payments");
+      const res = isStudent
+        ? await api.get(`/payments/student/${currentUser.student_id}`)
+        : await api.get("/payments");
       setPayments(res.data.data);
     } catch (err) {
       console.error(err);
-      setError("Failed to load payments");
+      setError(
+        isStudent ? "Failed to load your payments" : "Failed to load payments"
+      );
     } finally {
       setLoading(false);
     }
@@ -76,6 +94,9 @@ function Payments() {
   const openCreateModal = () => {
     setFormData(EMPTY_FORM);
     setEditingId(null);
+    setErrors({});
+    setModalError("");
+    setSaved(false);
     setShowModal(true);
   };
 
@@ -87,14 +108,22 @@ function Payments() {
       method: payment.method || "Cash",
     });
     setEditingId(payment.payment_id);
+    setErrors({});
+    setModalError("");
+    setSaved(false);
     setShowModal(true);
   };
 
   const handleSave = async () => {
-    if (!formData.student_id || !formData.amount) {
-      alert("Student and amount are required");
-      return;
-    }
+    const newErrors = {};
+    if (!formData.student_id) newErrors.student_id = "Select a student";
+    if (!formData.amount) newErrors.amount = "Amount is required";
+    else if (Number(formData.amount) <= 0)
+      newErrors.amount = "Amount must be greater than zero";
+
+    setErrors(newErrors);
+    setModalError("");
+    if (Object.keys(newErrors).length) return;
 
     try {
       if (editingId) {
@@ -103,13 +132,17 @@ function Payments() {
         await api.post("/payments", formData);
       }
 
-      setShowModal(false);
-      setEditingId(null);
-      setFormData(EMPTY_FORM);
-      fetchPayments();
+      setSaved(true);
+      setTimeout(() => {
+        setShowModal(false);
+        setEditingId(null);
+        setFormData(EMPTY_FORM);
+        setSaved(false);
+        fetchPayments();
+      }, 600);
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to save payment");
+      setModalError(err.response?.data?.message || "Failed to save payment");
     }
   };
 
@@ -117,35 +150,66 @@ function Payments() {
     try {
       await api.delete(`/payments/${deletingId}`);
       setDeletingId(null);
+      setDeleteError("");
       fetchPayments();
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to delete payment");
+      setDeleteError(err.response?.data?.message || "Failed to delete payment");
     }
   };
 
   const statusBadge = (status) => (
-    <span className="inline-flex items-center gap-2">
-      <span className={`w-2 h-2 shrink-0 ${STATUS_DOTS[status] || "bg-ink-mute"}`} />
-      <span className="label-mono !text-ink">{status}</span>
+    <span
+      className={`badge ${
+        status === "Paid"
+          ? "badge-ok"
+          : status === "Pending"
+          ? "badge-warn"
+          : status === "Failed"
+          ? "badge-danger"
+          : "badge-neutral"
+      }`}
+    >
+      <span
+        className={`w-1.5 h-1.5 shrink-0 ${STATUS_DOTS[status] || "bg-ink-mute"}`}
+      />
+      {status}
     </span>
   );
 
   const filteredPayments = payments.filter((p) => {
     const term = searchTerm.toLowerCase();
     return (
-      p.student_name.toLowerCase().includes(term) ||
+      String(p.student_name ?? "").toLowerCase().includes(term) ||
       p.status.toLowerCase().includes(term)
     );
   });
 
+  const { sorted: sortedPayments, sortKey, sortDir, toggle } = useSort(filteredPayments, {
+    accessors: {
+      id: (p) => Number(p.payment_id) || 0,
+      student: (p) => String(p.student_name ?? ""),
+      amount: (p) => Number(p.amount) || 0,
+      status: (p) => String(p.status ?? ""),
+      method: (p) => String(p.method ?? ""),
+      date: (p) => String(p.payment_date ?? ""),
+    },
+  });
+
+  const { pageItems: pagePayments, page, setPage, pageCount, startIndex, endIndex } =
+    usePagination(sortedPayments);
+
   return (
     <MainLayout>
       <PageHeader
-        title="Payments"
-        subtitle="Student fee payments, dues and settlement history."
-        actionLabel="Add Payment"
-        onAction={openCreateModal}
+        title={isStudent ? "My Payments" : "Payments"}
+        subtitle={
+          isStudent
+            ? "Your fee payments, dues and settlement history."
+            : "Student fee payments, dues and settlement history."
+        }
+        actionLabel={canManage ? "Add Payment" : undefined}
+        onAction={canManage ? openCreateModal : undefined}
       />
 
       <div className="surface">
@@ -165,7 +229,8 @@ function Payments() {
           </div>
 
           <p className="label-mono">
-            {filteredPayments.length} of {payments.length} records
+            <span className="font-mono text-ink">{filteredPayments.length}</span>
+            <span className="text-ink-mute"> of {payments.length} records</span>
           </p>
         </div>
 
@@ -190,32 +255,70 @@ function Payments() {
             />
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
+          <div className="table-scroll">
+            <table className="data-table w-full">
               <thead>
                 <tr className="bg-paper border-b border-line">
-                  <th className={TH}>ID</th>
-                  <th className={TH}>Student</th>
-                  <th className={TH}>Amount</th>
-                  <th className={TH}>Status</th>
-                  <th className={TH}>Method</th>
-                  <th className={TH}>Date</th>
-                  <th className={`${TH} text-center`}>Action</th>
+                  <SortableTh
+                    label="Student"
+                    sortKey="student"
+                    activeKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggle}
+                    className={TH}
+                  />
+                  <SortableTh
+                    label="Amount"
+                    sortKey="amount"
+                    activeKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggle}
+                    className={TH}
+                  />
+                  <SortableTh
+                    label="Status"
+                    sortKey="status"
+                    activeKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggle}
+                    className={TH}
+                  />
+                  <SortableTh
+                    label="Method"
+                    sortKey="method"
+                    activeKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggle}
+                    className={TH}
+                  />
+                  <SortableTh
+                    label="Date"
+                    sortKey="date"
+                    activeKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggle}
+                    className={TH}
+                  />
+                  <SortableTh
+                    label="ID"
+                    sortKey="id"
+                    activeKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggle}
+                    className={TH}
+                  />
+                  {canManage && <th className={`${TH} text-center`}>Action</th>}
                 </tr>
               </thead>
 
               <tbody>
-                {filteredPayments.map((payment) => (
+                {pagePayments.map((payment) => (
                   <tr
                     key={payment.payment_id}
                     className="border-b border-line last:border-b-0 hover:bg-paper transition-colors"
                   >
-                    <td className={`${TD} font-mono text-ink-mute`}>
-                      {String(payment.payment_id).padStart(3, "0")}
-                    </td>
-
                     <td className="px-5 py-3.5 text-[0.8125rem] font-semibold text-ink">
-                      {payment.student_name}
+                      {payment.student_name || `Student #${payment.student_id}`}
                     </td>
 
                     <td className="px-5 py-3.5 text-[0.8125rem] font-mono font-semibold text-ink">
@@ -232,32 +335,49 @@ function Payments() {
 
                     <td className={TD}>
                       {payment.payment_date
-                        ? new Date(payment.payment_date).toLocaleDateString()
+                        ? toDateInput(payment.payment_date)
                         : "—"}
                     </td>
 
-                    <td className="px-5 py-3.5">
-                      <RowActions
-                        onEdit={() => openEditModal(payment)}
-                        onDelete={() => setDeletingId(payment.payment_id)}
-                      />
+                    <td className={`${TD} font-mono text-ink-mute`}>
+                      {String(payment.payment_id).padStart(3, "0")}
                     </td>
+
+                    {canManage && (
+                      <td className="px-5 py-3.5">
+                        <RowActions
+                          onEdit={() => openEditModal(payment)}
+                          onDelete={() => setDeletingId(payment.payment_id)}
+                        />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
+        <Pager
+          startIndex={startIndex}
+          endIndex={endIndex}
+          total={filteredPayments.length}
+          page={page}
+          pageCount={pageCount}
+          onPage={setPage}
+        />
       </div>
 
-      {showModal && (
+      {canManage && showModal && (
         <Modal
           title={editingId ? "Edit Payment" : "Add Payment"}
           onClose={() => setShowModal(false)}
           onSave={handleSave}
           saveLabel={editingId ? "Update" : "Save"}
+          saved={saved}
+          modalError={modalError}
+          saveHint="STUDENT + AMOUNT required"
         >
-          <Field label="Student">
+          <Field label="Student" error={errors.student_id}>
             <select
               name="student_id"
               value={formData.student_id}
@@ -273,7 +393,7 @@ function Payments() {
             </select>
           </Field>
 
-          <Field label="Amount (৳)">
+          <Field label="Amount (৳)" error={errors.amount}>
             <input
               type="number"
               name="amount"
@@ -313,11 +433,15 @@ function Payments() {
         </Modal>
       )}
 
-      {deletingId && (
+      {canManage && deletingId && (
         <ConfirmDialog
           title="Delete Payment"
           message="Are you sure you want to delete this payment record? This cannot be undone."
-          onCancel={() => setDeletingId(null)}
+          error={deleteError}
+          onCancel={() => {
+            setDeletingId(null);
+            setDeleteError("");
+          }}
           onConfirm={handleDelete}
         />
       )}

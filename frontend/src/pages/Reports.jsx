@@ -17,14 +17,15 @@ const STATUS_DOTS = {
 // Chronological order within a course, not schema/alphabetical order
 const EXAM_ORDER = ["Quiz", "Assignment", "Mid", "Final"];
 
-const TH = "text-left px-5 py-2.5 label-mono whitespace-nowrap";
-const TD = "px-5 py-3 text-[0.8125rem] text-ink-soft whitespace-nowrap";
+const TH = "text-left px-5 py-2.5 label-mono whitespace-nowrap align-middle";
+const TD = "px-5 py-3 text-[0.8125rem] text-ink-soft whitespace-nowrap align-middle";
 
 function Reports() {
   const [students, setStudents] = useState([]);
   const [studentIdInput, setStudentIdInput] = useState("");
 
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [notFound, setNotFound] = useState(false);
   const [studentInfo, setStudentInfo] = useState(null);
   const [cgpaData, setCgpaData] = useState(null);
@@ -46,11 +47,12 @@ function Reports() {
 
   const handleGenerateReport = async () => {
     if (!studentIdInput.trim()) {
-      alert("Please enter a student ID");
+      setError("Enter a student ID to generate a report");
       return;
     }
 
     setLoading(true);
+    setError("");
     setNotFound(false);
     setStudentInfo(null);
     setCgpaData(null);
@@ -102,7 +104,7 @@ function Reports() {
       });
     } catch (err) {
       console.error(err);
-      alert("Failed to generate report");
+      setError("Failed to generate report");
     } finally {
       setLoading(false);
     }
@@ -132,11 +134,14 @@ function Reports() {
         (a, b) => EXAM_ORDER.indexOf(a.exam_type) - EXAM_ORDER.indexOf(b.exam_type)
       );
 
+      // Only Final exams count toward CGPA (same rule as the CGPA page and
+      // backend gradeService), so the per-course GPA matches the CGPA tile.
+      const finalRows = sortedRows.filter((r) => r.exam_type === "Final");
       const avgGpa =
-        sortedRows.length > 0
+        finalRows.length > 0
           ? (
-              sortedRows.reduce((sum, r) => sum + Number(r.grade_point), 0) /
-              sortedRows.length
+              finalRows.reduce((sum, r) => sum + Number(r.grade_point), 0) /
+              finalRows.length
             ).toFixed(2)
           : "—";
 
@@ -165,7 +170,7 @@ function Reports() {
 
             <button
               onClick={handleGenerateReport}
-              className="btn-solid whitespace-nowrap"
+              className="btn-solid btn-pushable whitespace-nowrap"
             >
               <Search size={15} strokeWidth={2.5} />
               Generate
@@ -176,10 +181,26 @@ function Reports() {
 
       {loading && <Loader text="Generating report" />}
 
+      {!loading && error && (
+        <div
+          role="alert"
+          className="flex items-start gap-2.5 border border-danger border-l-4 bg-danger-soft pl-3 pr-3.5 py-3 mb-6"
+        >
+          <AlertTriangle
+            size={15}
+            strokeWidth={2}
+            className="text-danger shrink-0 mt-0.5"
+          />
+          <p className="text-[0.8125rem] text-danger leading-relaxed">
+            {error}
+          </p>
+        </div>
+      )}
+
       {!loading && notFound && (
         <div
           role="alert"
-          className="flex items-start gap-2.5 border border-danger bg-danger-soft px-4 py-3.5 mb-6"
+          className="flex items-start gap-2.5 border border-danger border-l-4 bg-danger-soft pl-3 pr-3.5 py-3 mb-6"
         >
           <AlertTriangle
             size={15}
@@ -207,8 +228,11 @@ function Reports() {
         <div className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
             <div className="surface p-6">
-              <p className="label-mono">Student</p>
-              <p className="font-display font-bold text-xl text-ink mt-2 tracking-tight">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="badge badge-neutral">01</span>
+                <p className="label-mono">Student</p>
+              </div>
+              <p className="font-display font-bold text-xl text-ink tracking-tight">
                 {studentInfo.student_name}
               </p>
               <p className="text-[0.8125rem] text-ink-soft mt-1">
@@ -217,8 +241,11 @@ function Reports() {
             </div>
 
             <div className="surface p-6 text-center">
-              <p className="label-mono">CGPA</p>
-              <p className="font-display font-extrabold text-4xl text-ink mt-2 tracking-tight">
+              <div className="flex items-center justify-center gap-2 mb-3">
+                <span className="badge badge-neutral">02</span>
+                <p className="label-mono">CGPA</p>
+              </div>
+              <p className="font-display font-extrabold text-4xl text-ink tracking-tight">
                 {cgpaData ? Number(cgpaData.cgpa).toFixed(2) : "—"}
               </p>
               <p className="label-mono mt-2">
@@ -229,8 +256,11 @@ function Reports() {
             </div>
 
             <div className="surface p-6 text-center">
-              <p className="label-mono">Attendance</p>
-              <p className="font-display font-extrabold text-4xl text-ink mt-2 tracking-tight">
+              <div className="flex items-center justify-center gap-2 mb-3">
+                <span className="badge badge-neutral">03</span>
+                <p className="label-mono">Attendance</p>
+              </div>
+              <p className="font-display font-extrabold text-4xl text-ink tracking-tight">
                 {attendanceSummary ? `${attendanceSummary.percentage}%` : "—"}
               </p>
               <p className="label-mono mt-2">
@@ -267,7 +297,7 @@ function Reports() {
                       </div>
 
                       <div className="text-right shrink-0">
-                        <p className="label-mono">Avg GPA</p>
+                        <p className="label-mono">Final GPA</p>
                         <p className="font-display font-bold text-lg text-ink tracking-tight">
                           {group.avgGpa}
                         </p>
@@ -275,8 +305,8 @@ function Reports() {
                     </div>
 
                     {/* Exam rows for this course */}
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
+                    <div className="table-scroll">
+                      <table className="data-table w-full">
                         <thead>
                           <tr className="border-b border-line">
                             <th className={TH}>Exam</th>
@@ -291,8 +321,10 @@ function Reports() {
                               key={r.result_id}
                               className="border-b border-line last:border-b-0 hover:bg-paper transition-colors"
                             >
-                              <td className="px-5 py-3 text-[0.8125rem] text-ink">
-                                {r.exam_type}
+                              <td className="px-5 py-3 whitespace-nowrap">
+                                <span className="inline-block border border-line bg-paper px-2 py-1 label-mono text-ink-soft">
+                                  {r.exam_type}
+                                </span>
                               </td>
                               <td className={`${TD} font-mono`}>
                                 {r.marks_obtained} / {r.total_marks}

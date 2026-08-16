@@ -8,7 +8,7 @@ function RowActions({ onEdit, onDelete }) {
         onClick={onEdit}
         title="Edit"
         aria-label="Edit"
-        className="p-1.5 border border-line text-ink-mute hover:border-accent hover:text-accent hover:bg-accent-soft transition-colors"
+        className="p-2 sm:p-1.5 min-w-[2rem] sm:min-w-0 min-h-[2rem] sm:min-h-0 border border-line text-ink-mute hover:border-accent hover:text-accent hover:bg-accent-soft active:translate-y-px transition-colors"
       >
         <Pencil size={15} strokeWidth={1.9} />
       </button>
@@ -17,7 +17,7 @@ function RowActions({ onEdit, onDelete }) {
         onClick={onDelete}
         title="Delete"
         aria-label="Delete"
-        className="p-1.5 border border-line text-ink-mute hover:border-danger hover:text-danger hover:bg-danger-soft transition-colors"
+        className="p-2 sm:p-1.5 min-w-[2rem] sm:min-w-0 min-h-[2rem] sm:min-h-0 border border-line text-ink-mute hover:border-danger hover:text-danger hover:bg-danger-soft active:translate-y-px transition-colors"
       >
         <Trash2 size={15} strokeWidth={1.9} />
       </button>

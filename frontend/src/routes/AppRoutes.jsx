@@ -18,7 +18,9 @@ import Cgpa from "../pages/Cgpa";
 import Exam from "../pages/Exam";
 import Reports from "../pages/Reports";
 import Prediction from "../pages/Prediction";
+import Chat from "../pages/Chat";
 import AdminPanel from "../pages/AdminPanel";
+import TeacherCourses from "../pages/TeacherCourses";
 
 import ProtectedRoute from "./ProtectedRoute";
 
@@ -100,12 +102,22 @@ function AppRoutes() {
           }
         />
 
-        {/* Admin only - matches enrollmentRoutes.js roleMiddleware("admin", "teacher") on GET but write ops admin only; page itself manages enrollment */}
+        {/* Admin & Teacher - admin manages enrollment; teacher approves/rejects pending requests in assigned courses */}
         <Route
           path="/enrollment"
           element={
-            <ProtectedRoute allowedRoles={["admin"]}>
+            <ProtectedRoute allowedRoles={["admin", "teacher"]}>
               <Enrollment />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Admin only - matches teacherCourseRoutes.js roleMiddleware("admin") on all endpoints */}
+        <Route
+          path="/teacher-courses"
+          element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <TeacherCourses />
             </ProtectedRoute>
           }
         />
@@ -160,12 +172,22 @@ function AppRoutes() {
           }
         />
 
-        {/* Admin only */}
+        {/* Admin & Teacher - matches predictionRoutes.js roleMiddleware("admin", "teacher") */}
         <Route
           path="/prediction"
           element={
-            <ProtectedRoute allowedRoles={["admin"]}>
+            <ProtectedRoute allowedRoles={["admin", "teacher"]}>
               <Prediction />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Any authenticated role - AI feature to be wired by the team later */}
+        <Route
+          path="/chat"
+          element={
+            <ProtectedRoute>
+              <Chat />
             </ProtectedRoute>
           }
         />

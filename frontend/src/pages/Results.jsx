@@ -1,5 +1,5 @@
 import MainLayout from "../layouts/MainLayout";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import api from "../services/api";
 import { FileText, Search, ChevronDown, ChevronUp, X } from "lucide-react";
 
@@ -9,7 +9,9 @@ import EmptyState from "../components/EmptyState";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import RowActions from "../components/RowActions";
+import SortableTh from "../components/SortableTh";
 import Field, { CONTROL_CLASS } from "../components/Field";
+import { useSort } from "../services/useSort";
 
 const EMPTY_FORM = {
   enrollment_id: "",
@@ -63,10 +65,17 @@ const overallGrade = (rows) => {
 };
 
 // Shared table cell styles - reused by every column
-const TH = "text-left px-5 py-3 label-mono whitespace-nowrap";
-const TD = "px-5 py-3.5 text-[0.8125rem] text-ink-soft whitespace-nowrap";
+const TH = "text-left px-5 py-3 label-mono whitespace-nowrap align-middle";
+const TD = "px-5 py-3.5 text-[0.8125rem] text-ink-soft whitespace-nowrap align-middle";
 
 function Results() {
+  // Teachers only see/manage results for their assigned courses
+  // (backend scopes the data; the dropdown mirrors it here)
+  const currentUser = JSON.parse(localStorage.getItem("user") || "null");
+  const isTeacher = currentUser?.role === "teacher";
+  const isStudent = currentUser?.role === "student";
+  const canManage = !isStudent;
+
   const [results, setResults] = useState([]);
   const [enrollments, setEnrollments] = useState([]);
   const [exams, setExams] = useState([]);
@@ -93,24 +102,41 @@ function Results() {
   const [deletingId, setDeletingId] = useState(null);
 
   const [formData, setFormData] = useState(EMPTY_FORM);
+  const [errors, setErrors] = useState({});
+  const [modalError, setModalError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
+    // Students are locked to their own results - no pickers, no writes.
+    if (isStudent) {
+      setViewMode("student");
+      setSelectedStudentId(String(currentUser.student_id || ""));
+    }
+
     fetchResults();
-    fetchEnrollments();
-    fetchExams();
-    fetchCourses();
-    fetchStudents();
+
+    if (!isStudent) {
+      fetchEnrollments();
+      fetchExams();
+      fetchCourses();
+      fetchStudents();
+    }
   }, []);
 
   const fetchResults = async () => {
     try {
       setError("");
 
-      const res = await api.get("/results");
+      const res = isStudent
+        ? await api.get(`/results/student/${currentUser.student_id}`)
+        : await api.get("/results");
       setResults(res.data.data);
     } catch (err) {
       console.error(err);
-      setError("Failed to load results");
+      setError(
+        isStudent ? "Failed to load your results" : "Failed to load results"
+      );
     } finally {
       setLoading(false);
     }
@@ -136,7 +162,9 @@ function Results() {
 
   const fetchCourses = async () => {
     try {
-      const res = await api.get("/courses");
+      const res = isTeacher
+        ? await api.get("/teacher-courses/my")
+        : await api.get("/courses");
       setCourses(res.data.data);
     } catch (err) {
       console.error(err);
@@ -162,6 +190,9 @@ function Results() {
   const openCreateModal = () => {
     setFormData(EMPTY_FORM);
     setEditingId(null);
+    setErrors({});
+    setModalError("");
+    setSaved(false);
     setShowModal(true);
   };
 
@@ -172,23 +203,23 @@ function Results() {
       marks_obtained: result.marks_obtained,
     });
     setEditingId(result.result_id);
+    setErrors({});
+    setModalError("");
+    setSaved(false);
     setShowModal(true);
   };
 
   const handleSave = async () => {
-    if (
-      !formData.enrollment_id ||
-      !formData.exam_id ||
-      formData.marks_obtained === ""
-    ) {
-      alert("All fields are required");
-      return;
-    }
+    const newErrors = {};
+    if (!formData.enrollment_id) newErrors.enrollment_id = "Select an enrollment";
+    if (!formData.exam_id) newErrors.exam_id = "Select an exam";
+    if (formData.marks_obtained === "") newErrors.marks_obtained = "Marks are required";
+    if (Number(formData.marks_obtained) < 0)
+      newErrors.marks_obtained = "Marks obtained cannot be negative";
 
-    if (Number(formData.marks_obtained) < 0) {
-      alert("Marks obtained cannot be negative");
-      return;
-    }
+    setErrors(newErrors);
+    setModalError("");
+    if (Object.keys(newErrors).length) return;
 
     try {
       if (editingId) {
@@ -197,14 +228,17 @@ function Results() {
         await api.post("/results", formData);
       }
 
-      setShowModal(false);
-      setEditingId(null);
-      setFormData(EMPTY_FORM);
-
-      fetchResults();
+      setSaved(true);
+      setTimeout(() => {
+        setShowModal(false);
+        setEditingId(null);
+        setFormData(EMPTY_FORM);
+        setSaved(false);
+        fetchResults();
+      }, 600);
     } catch (err) {
       console.error(err);
-      alert(
+      setModalError(
         err.response?.data?.message ||
           "Failed to save result. A result for this enrollment and exam may already exist."
       );
@@ -215,10 +249,11 @@ function Results() {
     try {
       await api.delete(`/results/${deletingId}`);
       setDeletingId(null);
+      setDeleteError("");
       fetchResults();
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to delete result");
+      setDeleteError(err.response?.data?.message || "Failed to delete result");
     }
   };
 
@@ -313,38 +348,64 @@ function Results() {
     );
   }
 
+  const { sorted: sortedGroups, sortKey, sortDir, toggle } = useSort(groups, {
+    accessors: {
+      label: (g) => String(g.label ?? ""),
+      // Sort by grade point so letters fall in quality order (A+ > F).
+      overall: (g) => overallGrade(g.rows).grade_point ?? -1,
+    },
+  });
+
   const selectedCourse = courses.find(
     (c) => String(c.course_id) === String(selectedCourseId)
   );
 
-  const nothingSelected =
-    viewMode === "course" ? !selectedCourseId : !selectedStudentId;
+  const nothingSelected = isStudent
+    ? false
+    : viewMode === "course"
+    ? !selectedCourseId
+    : !selectedStudentId;
 
   return (
     <MainLayout>
       <PageHeader
-        title="Results"
-        subtitle="Marks recorded per exam, with the grade letter and grade point derived automatically."
-        actionLabel="Add Result"
-        onAction={openCreateModal}
+        title={isStudent ? "My Results" : "Results"}
+        subtitle={
+          isStudent
+            ? "Your marks per exam, with the grade letter and grade point derived automatically."
+            : "Marks recorded per exam, with the grade letter and grade point derived automatically."
+        }
+        actionLabel={canManage ? "Add Result" : undefined}
+        onAction={canManage ? openCreateModal : undefined}
       />
 
       <div className="surface">
         {/* Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 border-b border-line">
           <div className="flex flex-wrap items-center gap-3">
-            {/* Mode toggle */}
-            <div className="inline-flex border border-line">
-              <button
-                onClick={() => switchMode("course")}
-                className={`px-3 py-2 label-mono transition-colors ${
-                  viewMode === "course"
-                    ? "bg-ink text-paper"
-                    : "text-ink-soft hover:bg-paper"
-                }`}
-              >
-                By Course
-              </button>
+            {isStudent ? (
+              <div className="flex items-center gap-2 border border-line bg-paper px-3 py-2">
+                <span className="text-[0.8125rem] font-semibold text-ink truncate">
+                  My Results
+                </span>
+                <span className="font-mono text-ink-mute text-xs">
+                  #{currentUser.student_id}
+                </span>
+              </div>
+            ) : (
+              <>
+                {/* Mode toggle */}
+                <div className="inline-flex border border-line">
+                  <button
+                    onClick={() => switchMode("course")}
+                    className={`px-3 py-2 label-mono transition-colors ${
+                      viewMode === "course"
+                        ? "bg-ink text-paper"
+                        : "text-ink-soft hover:bg-paper"
+                    }`}
+                  >
+                    By Course
+                  </button>
               <button
                 onClick={() => switchMode("student")}
                 className={`px-3 py-2 label-mono transition-colors border-l border-line ${
@@ -374,7 +435,7 @@ function Results() {
                 ))}
               </select>
             ) : selectedStudent ? (
-              <div className="flex items-center gap-2 border border-line px-3 py-2 w-full sm:w-64">
+              <div className="flex items-center gap-2 border border-line bg-paper px-3 py-2 w-full sm:w-64">
                 <span className="text-[0.8125rem] font-semibold text-ink truncate">
                   {selectedStudent.student_name}
                 </span>
@@ -383,7 +444,7 @@ function Results() {
                 </span>
                 <button
                   onClick={clearStudent}
-                  className="ml-auto text-ink-mute hover:text-ink"
+                  className="ml-auto text-ink-mute hover:text-ink transition-colors"
                   title="Change student"
                 >
                   <X size={14} />
@@ -406,7 +467,7 @@ function Results() {
                 />
 
                 {studentIdMatches.length > 0 && (
-                  <div className="absolute z-10 mt-1 w-full border border-line bg-paper max-h-56 overflow-y-auto">
+                  <div className="absolute z-10 mt-1 w-full border border-line bg-paper max-h-56 overflow-y-auto shadow-[4px_4px_0_0_rgba(11,11,11,0.08)]">
                     {studentIdMatches.map((s) => (
                       <button
                         key={s.student_id}
@@ -443,12 +504,17 @@ function Results() {
                   className="control !pl-9"
                 />
               </div>
+              )}
+              </>
             )}
           </div>
 
           {!nothingSelected && (
-            <p className="label-mono">
-              {groups.length} {viewMode === "course" ? "students" : "courses"}
+            <p className="label-mono shrink-0">
+              <span className="font-mono text-ink">{groups.length}</span>
+              <span className="text-ink-mute">
+                {" "}{viewMode === "course" ? "students" : "courses"}
+              </span>
             </p>
           )}
         </div>
@@ -483,6 +549,8 @@ function Results() {
                     ? `No results found for ${
                         selectedCourse?.course_name || "this course"
                       }`
+                    : isStudent
+                    ? "No results yet"
                     : `No results found for ${
                         selectedStudent?.student_name || "this student"
                       }`
@@ -490,33 +558,46 @@ function Results() {
               }
               hint={
                 scopedResults.length === 0
-                  ? "Add the first result to get started"
+                  ? isStudent
+                    ? "Your results will appear here once teachers grade your exams"
+                    : "Add the first result to get started"
                   : "Try a different name"
               }
             />
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
+          <div className="table-scroll">
+            <table className="data-table w-full">
               <thead>
                 <tr className="bg-paper border-b border-line">
-                  <th className={TH}>
-                    {viewMode === "course" ? "Student" : "Course"}
-                  </th>
-                  <th className={`${TH} text-right`}>Grade</th>
+                  <SortableTh
+                    label={viewMode === "course" ? "Student" : "Course"}
+                    sortKey="label"
+                    activeKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggle}
+                    className={TH}
+                  />
+                  <SortableTh
+                    label="Grade"
+                    sortKey="overall"
+                    activeKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggle}
+                    className={`${TH} text-right`}
+                  />
                   <th className={`${TH} text-center`}>Details</th>
                 </tr>
               </thead>
 
               <tbody>
-                {groups.map((g) => {
+                {sortedGroups.map((g) => {
                   const isOpen = expandedKeys.has(g.key);
                   const overall = overallGrade(g.rows);
 
                   return (
-                    <>
+                    <Fragment key={g.key}>
                       <tr
-                        key={g.key}
                         className="border-b border-line last:border-b-0 hover:bg-paper transition-colors"
                       >
                         <td className="px-5 py-3.5 text-[0.8125rem] font-semibold text-ink whitespace-nowrap">
@@ -546,7 +627,7 @@ function Results() {
                         <td className="px-5 py-3.5 text-center">
                           <button
                             onClick={() => toggleExpanded(g.key)}
-                            className="inline-flex items-center gap-1.5 border border-line px-3 py-1.5 label-mono text-ink-soft hover:bg-paper transition-colors"
+                            className="inline-flex items-center gap-1.5 border border-line px-3 py-1.5 label-mono text-ink-soft hover:bg-paper hover:border-ink hover:text-ink transition-all duration-150 btn-pushable"
                           >
                             {isOpen ? (
                               <>
@@ -568,7 +649,7 @@ function Results() {
                           <td colSpan={3} className="bg-paper px-5 py-4">
                             <table className="w-full border-collapse border border-line">
                               <thead>
-                                <tr className="border-b border-line">
+                                <tr className="bg-paper border-b border-line">
                                   <th className={TH}>
                                     {viewMode === "course"
                                       ? "Exam"
@@ -581,9 +662,11 @@ function Results() {
                                     Grade
                                   </th>
                                   <th className={`${TH} text-right`}>GPA</th>
-                                  <th className={`${TH} text-center`}>
-                                    Action
-                                  </th>
+                                  {canManage && (
+                                    <th className={`${TH} text-center`}>
+                                      Action
+                                    </th>
+                                  )}
                                 </tr>
                               </thead>
 
@@ -627,14 +710,16 @@ function Results() {
                                         : Number(r.grade_point).toFixed(2)}
                                     </td>
 
-                                    <td className="px-5 py-3">
-                                      <RowActions
-                                        onEdit={() => openEditModal(r)}
-                                        onDelete={() =>
-                                          setDeletingId(r.result_id)
-                                        }
-                                      />
-                                    </td>
+                                    {canManage && (
+                                      <td className="px-5 py-3">
+                                        <RowActions
+                                          onEdit={() => openEditModal(r)}
+                                          onDelete={() =>
+                                            setDeletingId(r.result_id)
+                                          }
+                                        />
+                                      </td>
+                                    )}
                                   </tr>
                                 ))}
                               </tbody>
@@ -642,7 +727,7 @@ function Results() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -651,14 +736,36 @@ function Results() {
         )}
       </div>
 
-      {showModal && (
+      <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 px-5 py-3 border border-line bg-panel label-mono text-ink-mute">
+        <span className="text-ink-soft">GRADE SCALE</span>
+        <span>
+          <span className="text-ok font-semibold">A+ → B</span> excellent
+        </span>
+        <span>
+          <span className="text-warn font-semibold">B- → C</span> satisfactory
+        </span>
+        <span>
+          <span className="text-warn font-semibold">D</span> conditional
+        </span>
+        <span>
+          <span className="text-danger font-semibold">F</span> fail
+        </span>
+        <span className="text-ink-soft">
+          any failed exam forces an overall F
+        </span>
+      </div>
+
+      {canManage && showModal && (
         <Modal
           title={editingId ? "Edit Result" : "Add Result"}
           onClose={() => setShowModal(false)}
           onSave={handleSave}
           saveLabel={editingId ? "Update" : "Save"}
+          saved={saved}
+          modalError={modalError}
+          saveHint="ENROLLMENT + EXAM + MARKS required"
         >
-          <Field label="Enrollment">
+          <Field label="Enrollment" error={errors.enrollment_id}>
             <select
               name="enrollment_id"
               value={formData.enrollment_id}
@@ -674,7 +781,7 @@ function Results() {
             </select>
           </Field>
 
-          <Field label="Exam">
+          <Field label="Exam" error={errors.exam_id}>
             <select
               name="exam_id"
               value={formData.exam_id}
@@ -690,7 +797,7 @@ function Results() {
             </select>
           </Field>
 
-          <Field label="Marks Obtained">
+          <Field label="Marks Obtained" error={errors.marks_obtained}>
             <input
               type="number"
               step="0.01"
@@ -710,11 +817,15 @@ function Results() {
         </Modal>
       )}
 
-      {deletingId && (
+      {canManage && deletingId && (
         <ConfirmDialog
           title="Delete Result"
           message="Are you sure you want to delete this result? It will affect the student's CGPA."
-          onCancel={() => setDeletingId(null)}
+          error={deleteError}
+          onCancel={() => {
+            setDeletingId(null);
+            setDeleteError("");
+          }}
           onConfirm={handleDelete}
         />
       )}

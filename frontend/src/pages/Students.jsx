@@ -1,6 +1,7 @@
 import MainLayout from "../layouts/MainLayout";
 import { useEffect, useState } from "react";
 import api from "../services/api";
+import { toDateInput } from "../services/date";
 import { Users, Search } from "lucide-react";
 
 import PageHeader from "../components/PageHeader";
@@ -9,7 +10,9 @@ import EmptyState from "../components/EmptyState";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import RowActions from "../components/RowActions";
+import SortableTh from "../components/SortableTh";
 import Field, { CONTROL_CLASS } from "../components/Field";
+import { useSort } from "../services/useSort";
 
 const EMPTY_FORM = {
   student_name: "",
@@ -22,12 +25,9 @@ const EMPTY_FORM = {
   admission_date: "",
 };
 
-// MySQL DATE columns arrive as ISO strings; <input type="date"> needs YYYY-MM-DD.
-const toDateInput = (value) => (value ? String(value).split("T")[0] : "");
-
 // Shared table cell styles - reused by every column
-const TH = "text-left px-5 py-2.5 label-mono whitespace-nowrap";
-const TD = "px-5 py-3 text-[0.8125rem] text-ink-soft whitespace-nowrap";
+const TH = "text-left px-5 py-2.5 label-mono whitespace-nowrap align-middle";
+const TD = "px-5 py-3 text-[0.8125rem] text-ink-soft whitespace-nowrap align-middle";
 
 function Students() {
   const [students, setStudents] = useState([]);
@@ -42,6 +42,13 @@ function Students() {
   const [deletingId, setDeletingId] = useState(null);
 
   const [formData, setFormData] = useState(EMPTY_FORM);
+  const [errors, setErrors] = useState({});
+  const [modalError, setModalError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  const currentUser = JSON.parse(localStorage.getItem("user") || "null");
+  const isAdmin = currentUser?.role === "admin";
 
   useEffect(() => {
     fetchStudents();
@@ -74,20 +81,22 @@ function Students() {
   };
 
   // A student's "current semester" is the highest semester across their
-  // enrollments - enrollments carry semester, students don't.
+  // APPROVED enrollments - pending/rejected requests don't count.
   const fetchSemesters = async () => {
     try {
       const res = await api.get("/enrollments");
       const map = {};
 
-      res.data.data.forEach((en) => {
-        const sid = en.student_id;
-        const sem = Number(en.semester);
+      res.data.data
+        .filter((en) => en.status === "approved")
+        .forEach((en) => {
+          const sid = en.student_id;
+          const sem = Number(en.semester);
 
-        if (!map[sid] || sem > map[sid]) {
-          map[sid] = sem;
-        }
-      });
+          if (!map[sid] || sem > map[sid]) {
+            map[sid] = sem;
+          }
+        });
 
       setSemesterMap(map);
     } catch (err) {
@@ -102,6 +111,9 @@ function Students() {
   const openCreateModal = () => {
     setFormData(EMPTY_FORM);
     setEditingId(null);
+    setErrors({});
+    setModalError("");
+    setSaved(false);
     setShowModal(true);
   };
 
@@ -117,19 +129,26 @@ function Students() {
       admission_date: toDateInput(student.admission_date),
     });
     setEditingId(student.student_id);
+    setErrors({});
+    setModalError("");
+    setSaved(false);
     setShowModal(true);
   };
 
   const handleSave = async () => {
-    if (
-      !formData.student_name ||
-      !formData.student_email ||
-      !formData.student_phone ||
-      !formData.department_id
-    ) {
-      alert("Name, email, phone and department are required");
-      return;
-    }
+    const newErrors = {};
+    if (!formData.student_name) newErrors.student_name = "Full name is required";
+    if (!formData.student_email) newErrors.student_email = "Email is required";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.student_email))
+      newErrors.student_email = "Enter a valid email address";
+    if (!formData.student_phone) newErrors.student_phone = "Phone is required";
+    else if (!/^[0-9+\-\s]{7,20}$/.test(formData.student_phone))
+      newErrors.student_phone = "Enter a valid phone number";
+    if (!formData.department_id) newErrors.department_id = "Select a department";
+
+    setErrors(newErrors);
+    setModalError("");
+    if (Object.keys(newErrors).length) return;
 
     try {
       if (editingId) {
@@ -138,15 +157,18 @@ function Students() {
         await api.post("/students", formData);
       }
 
-      setShowModal(false);
-      setEditingId(null);
-      setFormData(EMPTY_FORM);
-
-      fetchStudents();
-      fetchSemesters();
+      setSaved(true);
+      setTimeout(() => {
+        setShowModal(false);
+        setEditingId(null);
+        setFormData(EMPTY_FORM);
+        setSaved(false);
+        fetchStudents();
+        fetchSemesters();
+      }, 600);
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to save student");
+      setModalError(err.response?.data?.message || "Failed to save student");
     }
   };
 
@@ -154,28 +176,43 @@ function Students() {
     try {
       await api.delete(`/students/${deletingId}`);
       setDeletingId(null);
+      setDeleteError("");
       fetchStudents();
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to delete student");
+      setDeleteError(err.response?.data?.message || "Failed to delete student");
     }
   };
 
-  // Search is ID-only - matches the raw id or the zero-padded display id
+  // Search by name or ID - name matches case-insensitively, ID matches the
+  // raw id or the zero-padded display id
   const filteredStudents = students.filter((student) => {
-    if (!searchId.trim()) return true;
+    const term = searchId.trim().toLowerCase();
+    if (!term) return true;
 
-    const term = searchId.trim();
     const paddedId = String(student.student_id).padStart(3, "0");
 
     return (
-      String(student.student_id).includes(term) || paddedId.includes(term)
+      student.student_name?.toLowerCase().includes(term) ||
+      String(student.student_id).includes(term) ||
+      paddedId.includes(term)
     );
+  });
+
+  const { sorted: sortedStudents, sortKey, sortDir, toggle } = useSort(filteredStudents, {
+    accessors: {
+      id: (s) => Number(s.student_id) || 0,
+      name: (s) => String(s.student_name ?? ""),
+      email: (s) => String(s.student_email ?? ""),
+      phone: (s) => String(s.student_phone ?? ""),
+      gender: (s) => String(s.gender ?? ""),
+      admitted: (s) => String(s.admission_date ?? ""),
+    },
   });
 
   // Department -> Semester -> [students], each level sorted for a stable layout
   const departmentGroups = Object.values(
-    filteredStudents.reduce((acc, s) => {
+    sortedStudents.reduce((acc, s) => {
       const deptKey = s.department_name;
 
       if (!acc[deptKey]) {
@@ -214,30 +251,38 @@ function Students() {
       <PageHeader
         title="Students"
         subtitle="Every enrolled student across the ten departments of Eastern University."
-        actionLabel="Add Student"
-        onAction={openCreateModal}
+        actionLabel={isAdmin ? "Add Student" : undefined}
+        onAction={isAdmin ? openCreateModal : undefined}
       />
 
-      <div className="surface p-5 mb-6">
-        <Field label="Search by Student ID">
-          <div className="relative max-w-xs">
-            <Search
-              size={15}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-mute pointer-events-none"
-            />
-            <input
-              type="number"
-              placeholder="e.g. 5"
-              value={searchId}
-              onChange={(e) => setSearchId(e.target.value)}
-              className={`${CONTROL_CLASS} !mt-0 !pl-9`}
-            />
+      <div className="surface p-4 sm:p-5 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+          <div className="w-full sm:max-w-xs">
+            <label className="label-mono block mb-2">Search by Name or ID</label>
+            <div className="relative">
+              <Search
+                size={15}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-mute pointer-events-none"
+              />
+              <input
+                type="text"
+                placeholder="e.g. Masum or 5"
+                value={searchId}
+                onChange={(e) => setSearchId(e.target.value)}
+                className={`${CONTROL_CLASS} !mt-0 !pl-9`}
+              />
+            </div>
           </div>
-        </Field>
 
-        <p className="label-mono mt-1">
-          {filteredStudents.length} of {students.length} records
-        </p>
+          <p className="label-mono shrink-0">
+            <span className="font-mono text-ink">
+              {filteredStudents.length}
+            </span>
+            <span className="text-ink-mute">
+              {" "}of {students.length} records
+            </span>
+          </p>
+        </div>
       </div>
 
       {loading ? (
@@ -266,17 +311,21 @@ function Students() {
         </div>
       ) : (
         <div className="space-y-8">
-          {departmentGroups.map((dept) => (
+          {departmentGroups.map((dept, index) => (
             <div key={dept.department_name}>
               {/* Department header */}
-              <div className="flex items-baseline justify-between gap-4 mb-3">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="badge badge-neutral px-1.5 py-0.5">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
                 <h2 className="font-display font-bold text-lg text-ink tracking-tight">
                   {dept.department_name}
                 </h2>
-                <p className="label-mono">
-                  {dept.students.length} student
-                  {dept.students.length > 1 ? "s" : ""}
-                </p>
+                <span className="h-px flex-1 bg-line" />
+                <span className="badge badge-neutral px-1.5 py-0.5">
+                  {dept.students.length}{" "}
+                  {dept.students.length > 1 ? "students" : "student"}
+                </span>
               </div>
 
               <div className="space-y-4">
@@ -285,24 +334,69 @@ function Students() {
                     key={group.semester || "unassigned"}
                     className="surface overflow-hidden"
                   >
-                    <div className="px-5 py-2.5 border-b border-line bg-paper">
+                    <div className="px-5 py-2.5 border-b border-line bg-paper flex items-center justify-between">
                       <p className="label-mono">
                         {group.semester
                           ? `Semester ${group.semester}`
                           : "Semester — Unassigned"}
                       </p>
+                      <span className="label-mono">
+                        {group.students.length}
+                      </span>
                     </div>
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
+                    <div className="table-scroll">
+                      <table className="data-table w-full">
                         <thead>
-                          <tr className="border-b border-line">
-                            <th className={TH}>ID</th>
-                            <th className={TH}>Name</th>
-                            <th className={TH}>Email</th>
-                            <th className={TH}>Phone</th>
-                            <th className={TH}>Gender</th>
-                            <th className={TH}>Admitted</th>
+                          <tr className="bg-paper border-b border-line">
+                            <SortableTh
+                              label="Name"
+                              sortKey="name"
+                              activeKey={sortKey}
+                              sortDir={sortDir}
+                              onSort={toggle}
+                              className={TH}
+                            />
+                            <SortableTh
+                              label="Email"
+                              sortKey="email"
+                              activeKey={sortKey}
+                              sortDir={sortDir}
+                              onSort={toggle}
+                              className={TH}
+                            />
+                            <SortableTh
+                              label="Phone"
+                              sortKey="phone"
+                              activeKey={sortKey}
+                              sortDir={sortDir}
+                              onSort={toggle}
+                              className={TH}
+                            />
+                            <SortableTh
+                              label="Gender"
+                              sortKey="gender"
+                              activeKey={sortKey}
+                              sortDir={sortDir}
+                              onSort={toggle}
+                              className={TH}
+                            />
+                            <SortableTh
+                              label="Admitted"
+                              sortKey="admitted"
+                              activeKey={sortKey}
+                              sortDir={sortDir}
+                              onSort={toggle}
+                              className={TH}
+                            />
+                            <SortableTh
+                              label="ID"
+                              sortKey="id"
+                              activeKey={sortKey}
+                              sortDir={sortDir}
+                              onSort={toggle}
+                              className={TH}
+                            />
                             <th className={`${TH} text-center`}>Action</th>
                           </tr>
                         </thead>
@@ -313,10 +407,6 @@ function Students() {
                               key={student.student_id}
                               className="border-b border-line last:border-b-0 hover:bg-paper transition-colors"
                             >
-                              <td className={`${TD} font-mono text-ink-mute`}>
-                                {String(student.student_id).padStart(3, "0")}
-                              </td>
-
                               <td className="px-5 py-3 text-[0.8125rem] font-semibold text-ink whitespace-nowrap">
                                 {student.student_name}
                               </td>
@@ -333,11 +423,17 @@ function Students() {
                                 {toDateInput(student.admission_date) || "—"}
                               </td>
 
+                              <td className={`${TD} font-mono text-ink-mute`}>
+                                {String(student.student_id).padStart(3, "0")}
+                              </td>
+
                               <td className="px-5 py-3 text-center">
-                                <RowActions
-                                  onEdit={() => openEditModal(student)}
-                                  onDelete={() => setDeletingId(student.student_id)}
-                                />
+                                {isAdmin && (
+                                  <RowActions
+                                    onEdit={() => openEditModal(student)}
+                                    onDelete={() => setDeletingId(student.student_id)}
+                                  />
+                                )}
                               </td>
                             </tr>
                           ))}
@@ -358,10 +454,13 @@ function Students() {
           onClose={() => setShowModal(false)}
           onSave={handleSave}
           saveLabel={editingId ? "Update" : "Save"}
+          saved={saved}
+          modalError={modalError}
+          saveHint="NAME + EMAIL + PHONE + DEPARTMENT required"
           wide
         >
           <div className="grid grid-cols-2 gap-x-4">
-            <Field label="Full Name">
+            <Field label="Full Name" error={errors.student_name}>
               <input
                 type="text"
                 name="student_name"
@@ -372,7 +471,7 @@ function Students() {
               />
             </Field>
 
-            <Field label="Email">
+            <Field label="Email" error={errors.student_email}>
               <input
                 type="email"
                 name="student_email"
@@ -383,7 +482,7 @@ function Students() {
               />
             </Field>
 
-            <Field label="Phone">
+            <Field label="Phone" error={errors.student_phone}>
               <input
                 type="text"
                 name="student_phone"
@@ -394,7 +493,7 @@ function Students() {
               />
             </Field>
 
-            <Field label="Department">
+            <Field label="Department" error={errors.department_id}>
               <select
                 name="department_id"
                 value={formData.department_id}
@@ -462,7 +561,11 @@ function Students() {
         <ConfirmDialog
           title="Delete Student"
           message="Are you sure you want to delete this student? Their enrollments, attendance, results and payments will be deleted too."
-          onCancel={() => setDeletingId(null)}
+          error={deleteError}
+          onCancel={() => {
+            setDeletingId(null);
+            setDeleteError("");
+          }}
           onConfirm={handleDelete}
         />
       )}

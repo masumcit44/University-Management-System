@@ -63,17 +63,35 @@ const Timetable = {
     getTimetableByTeacher: (teacher_id, callback) => {
         const sql = `
             SELECT
-                timetable.timetable_id,
+                MIN(timetable.timetable_id) AS timetable_id,
+                timetable.course_id,
+                timetable.teacher_id,
                 timetable.room_no,
+                NULLIF(SUBSTRING_INDEX(timetable.room_no, '-', 1), timetable.room_no) AS building,
                 timetable.day,
                 timetable.start_time,
                 timetable.end_time,
                 courses.course_name,
-                courses.course_code
+                courses.course_code,
+                courses.credit,
+                courses.semester AS course_semester,
+                departments.department_name,
+                teachers.teacher_name,
+                teachers.teacher_email
             FROM timetable
             JOIN courses
-            ON timetable.course_id = courses.course_id
+                ON timetable.course_id = courses.course_id
+            JOIN departments
+                ON courses.department_id = departments.department_id
+            JOIN teachers
+                ON timetable.teacher_id = teachers.teacher_id
             WHERE timetable.teacher_id = ?
+            GROUP BY
+                timetable.course_id, timetable.teacher_id, timetable.room_no,
+                timetable.day, timetable.start_time, timetable.end_time,
+                courses.course_name, courses.course_code, courses.credit,
+                courses.semester, departments.department_name,
+                teachers.teacher_name, teachers.teacher_email
             ORDER BY
                 FIELD(timetable.day, 'Saturday','Sunday','Monday','Tuesday','Wednesday','Thursday','Friday'),
                 timetable.start_time
@@ -108,27 +126,50 @@ const Timetable = {
 
     // =======================
     // Get Timetable By Student (via their enrollments - a student's
-    // schedule is the union of every course they're enrolled in)
+    // schedule is the union of every course they're enrolled in).
+    // Only APPROVED enrollments count as "active" - pending/rejected
+    // requests are excluded so a student never sees classes they are
+    // not yet part of.
     // =======================
     getTimetableByStudent: (student_id, callback) => {
         const sql = `
             SELECT
-                timetable.timetable_id,
+                MIN(timetable.timetable_id) AS timetable_id,
+                timetable.course_id,
+                timetable.teacher_id,
                 timetable.room_no,
+                NULLIF(SUBSTRING_INDEX(timetable.room_no, '-', 1), timetable.room_no) AS building,
                 timetable.day,
                 timetable.start_time,
                 timetable.end_time,
                 courses.course_name,
                 courses.course_code,
-                teachers.teacher_name
+                courses.credit,
+                courses.semester AS course_semester,
+                departments.department_name,
+                teachers.teacher_name,
+                teachers.teacher_email,
+                enrollments.semester AS enrolled_semester,
+                enrollments.session,
+                enrollments.status AS enrollment_status
             FROM timetable
             JOIN courses
                 ON timetable.course_id = courses.course_id
+            JOIN departments
+                ON courses.department_id = departments.department_id
             JOIN teachers
                 ON timetable.teacher_id = teachers.teacher_id
             JOIN enrollments
                 ON enrollments.course_id = timetable.course_id
             WHERE enrollments.student_id = ?
+                AND enrollments.status = 'approved'
+            GROUP BY
+                timetable.course_id, timetable.teacher_id, timetable.room_no,
+                timetable.day, timetable.start_time, timetable.end_time,
+                courses.course_name, courses.course_code, courses.credit,
+                courses.semester, departments.department_name,
+                teachers.teacher_name, teachers.teacher_email,
+                enrollments.semester, enrollments.session, enrollments.status
             ORDER BY
                 FIELD(timetable.day, 'Saturday','Sunday','Monday','Tuesday','Wednesday','Thursday','Friday'),
                 timetable.start_time

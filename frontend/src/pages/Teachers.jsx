@@ -1,6 +1,7 @@
 import MainLayout from "../layouts/MainLayout";
 import { useEffect, useState } from "react";
 import api from "../services/api";
+import { toDateInput } from "../services/date";
 import { GraduationCap, Search } from "lucide-react";
 
 import PageHeader from "../components/PageHeader";
@@ -23,12 +24,9 @@ const EMPTY_FORM = {
   joining_date: "",
 };
 
-// MySQL DATE columns arrive as ISO strings; <input type="date"> needs YYYY-MM-DD.
-const toDateInput = (value) => (value ? value.split("T")[0] : "");
-
 // Shared table cell styles - reused by every column
-const TH = "text-left px-5 py-2.5 label-mono whitespace-nowrap";
-const TD = "px-5 py-3 text-[0.8125rem] text-ink-soft whitespace-nowrap";
+const TH = "text-left px-5 py-2.5 label-mono whitespace-nowrap align-middle";
+const TD = "px-5 py-3 text-[0.8125rem] text-ink-soft whitespace-nowrap align-middle";
 
 function Teachers() {
   const [teachers, setTeachers] = useState([]);
@@ -43,6 +41,10 @@ function Teachers() {
   const [deletingId, setDeletingId] = useState(null);
 
   const [formData, setFormData] = useState(EMPTY_FORM);
+  const [errors, setErrors] = useState({});
+  const [modalError, setModalError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     fetchTeachers();
@@ -108,6 +110,9 @@ function Teachers() {
   const openCreateModal = () => {
     setFormData(EMPTY_FORM);
     setEditingId(null);
+    setErrors({});
+    setModalError("");
+    setSaved(false);
     setShowModal(true);
   };
 
@@ -124,19 +129,22 @@ function Teachers() {
       joining_date: toDateInput(teacher.joining_date),
     });
     setEditingId(teacher.teacher_id);
+    setErrors({});
+    setModalError("");
+    setSaved(false);
     setShowModal(true);
   };
 
   const handleSave = async () => {
-    if (
-      !formData.teacher_name ||
-      !formData.teacher_email ||
-      !formData.teacher_phone ||
-      !formData.department_id
-    ) {
-      alert("Name, email, phone and department are required");
-      return;
-    }
+    const newErrors = {};
+    if (!formData.teacher_name) newErrors.teacher_name = "Full name is required";
+    if (!formData.teacher_email) newErrors.teacher_email = "Email is required";
+    if (!formData.teacher_phone) newErrors.teacher_phone = "Phone is required";
+    if (!formData.department_id) newErrors.department_id = "Select a department";
+
+    setErrors(newErrors);
+    setModalError("");
+    if (Object.keys(newErrors).length) return;
 
     try {
       if (editingId) {
@@ -145,14 +153,17 @@ function Teachers() {
         await api.post("/teachers", formData);
       }
 
-      setShowModal(false);
-      setEditingId(null);
-      setFormData(EMPTY_FORM);
-
-      fetchTeachers();
+      setSaved(true);
+      setTimeout(() => {
+        setShowModal(false);
+        setEditingId(null);
+        setFormData(EMPTY_FORM);
+        setSaved(false);
+        fetchTeachers();
+      }, 600);
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to save teacher");
+      setModalError(err.response?.data?.message || "Failed to save teacher");
     }
   };
 
@@ -160,10 +171,11 @@ function Teachers() {
     try {
       await api.delete(`/teachers/${deletingId}`);
       setDeletingId(null);
+      setDeleteError("");
       fetchTeachers();
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to delete teacher");
+      setDeleteError(err.response?.data?.message || "Failed to delete teacher");
     }
   };
 
@@ -223,26 +235,34 @@ function Teachers() {
         onAction={openCreateModal}
       />
 
-      <div className="surface p-5 mb-6">
-        <Field label="Search by Teacher ID">
-          <div className="relative max-w-xs">
-            <Search
-              size={15}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-mute pointer-events-none"
-            />
-            <input
-              type="number"
-              placeholder="e.g. 3"
-              value={searchId}
-              onChange={(e) => setSearchId(e.target.value)}
-              className={`${CONTROL_CLASS} !mt-0 !pl-9`}
-            />
+      <div className="surface p-4 sm:p-5 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+          <div className="w-full sm:max-w-xs">
+            <label className="label-mono block mb-2">Search by Teacher ID</label>
+            <div className="relative">
+              <Search
+                size={15}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-mute pointer-events-none"
+              />
+              <input
+                type="number"
+                placeholder="e.g. 3"
+                value={searchId}
+                onChange={(e) => setSearchId(e.target.value)}
+                className={`${CONTROL_CLASS} !mt-0 !pl-9`}
+              />
+            </div>
           </div>
-        </Field>
 
-        <p className="label-mono mt-1">
-          {filteredTeachers.length} of {teachers.length} records
-        </p>
+          <p className="label-mono shrink-0">
+            <span className="font-mono text-ink">
+              {filteredTeachers.length}
+            </span>
+            <span className="text-ink-mute">
+              {" "}of {teachers.length} records
+            </span>
+          </p>
+        </div>
       </div>
 
       {loading ? (
@@ -271,22 +291,26 @@ function Teachers() {
         </div>
       ) : (
         <div className="space-y-8">
-          {departmentGroups.map((dept) => (
+          {departmentGroups.map((dept, index) => (
             <div key={dept.department_name}>
               {/* Department header */}
-              <div className="flex items-baseline justify-between gap-4 mb-3">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="badge badge-neutral px-1.5 py-0.5">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
                 <h2 className="font-display font-bold text-lg text-ink tracking-tight">
                   {dept.department_name}
                 </h2>
-                <p className="label-mono">
-                  {dept.teachers.length} teacher
-                  {dept.teachers.length > 1 ? "s" : ""}
-                </p>
+                <span className="h-px flex-1 bg-line" />
+                <span className="badge badge-neutral px-1.5 py-0.5">
+                  {dept.teachers.length}{" "}
+                  {dept.teachers.length > 1 ? "teachers" : "teacher"}
+                </span>
               </div>
 
               <div className="surface overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
+                <div className="table-scroll">
+                  <table className="data-table w-full">
                     <thead>
                       <tr className="bg-paper border-b border-line">
                         <th className={TH}>ID</th>
@@ -351,10 +375,13 @@ function Teachers() {
           onClose={() => setShowModal(false)}
           onSave={handleSave}
           saveLabel={editingId ? "Update" : "Save"}
+          saved={saved}
+          modalError={modalError}
+          saveHint="NAME + EMAIL + PHONE + DEPARTMENT required"
           wide
         >
           <div className="grid grid-cols-2 gap-x-4">
-            <Field label="Full Name">
+            <Field label="Full Name" error={errors.teacher_name}>
               <input
                 type="text"
                 name="teacher_name"
@@ -376,7 +403,7 @@ function Teachers() {
               />
             </Field>
 
-            <Field label="Email">
+            <Field label="Email" error={errors.teacher_email}>
               <input
                 type="email"
                 name="teacher_email"
@@ -387,7 +414,7 @@ function Teachers() {
               />
             </Field>
 
-            <Field label="Phone">
+            <Field label="Phone" error={errors.teacher_phone}>
               <input
                 type="text"
                 name="teacher_phone"
@@ -398,7 +425,7 @@ function Teachers() {
               />
             </Field>
 
-            <Field label="Department">
+            <Field label="Department" error={errors.department_id}>
               <select
                 name="department_id"
                 value={formData.department_id}
@@ -466,7 +493,11 @@ function Teachers() {
         <ConfirmDialog
           title="Delete Teacher"
           message="Are you sure you want to delete this teacher? Their timetable entries will be removed as well."
-          onCancel={() => setDeletingId(null)}
+          error={deleteError}
+          onCancel={() => {
+            setDeletingId(null);
+            setDeleteError("");
+          }}
           onConfirm={handleDelete}
         />
       )}

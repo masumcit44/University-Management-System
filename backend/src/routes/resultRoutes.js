@@ -15,6 +15,14 @@ router.get(
     resultController.getResults
 );
 
+// GET Results For A Student (Admin, Student - student ownership checked in controller)
+router.get(
+    "/student/:student_id",
+    authMiddleware,
+    roleMiddleware("admin", "student"),
+    resultController.getResultsByStudent
+);
+
 // GET Result By ID (Admin, Teacher, Student - student ownership checked in controller)
 router.get(
     "/:id",

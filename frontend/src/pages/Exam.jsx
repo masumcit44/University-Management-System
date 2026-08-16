@@ -1,6 +1,7 @@
 import MainLayout from "../layouts/MainLayout";
 import { useEffect, useState } from "react";
 import api from "../services/api";
+import { toDateInput } from "../services/date";
 import { NotebookPen, Search } from "lucide-react";
 
 import PageHeader from "../components/PageHeader";
@@ -9,7 +10,9 @@ import EmptyState from "../components/EmptyState";
 import Modal from "../components/Modal";
 import ConfirmDialog from "../components/ConfirmDialog";
 import RowActions from "../components/RowActions";
+import SortableTh from "../components/SortableTh";
 import Field, { CONTROL_CLASS } from "../components/Field";
+import { useSort } from "../services/useSort";
 
 // Final is the only exam type that counts toward CGPA, so it carries the
 // filled chip. Everything else stays a hairline outline.
@@ -27,14 +30,18 @@ const EMPTY_FORM = {
   total_marks: "",
 };
 
-// MySQL DATE columns arrive as ISO strings; <input type="date"> needs YYYY-MM-DD.
-const toDateInput = (value) => (value ? String(value).split("T")[0] : "");
-
 // Shared table cell styles - reused by every column
-const TH = "text-left px-5 py-3 label-mono whitespace-nowrap";
-const TD = "px-5 py-3.5 text-[0.8125rem] text-ink-soft whitespace-nowrap";
+const TH = "text-left px-5 py-3 label-mono whitespace-nowrap align-middle";
+const TD = "px-5 py-3.5 text-[0.8125rem] text-ink-soft whitespace-nowrap align-middle";
 
 function Exam() {
+  // Teachers only ever see/manage exams for their assigned courses
+  // (backend scopes the data; the dropdown mirrors it here)
+  const currentUser = JSON.parse(localStorage.getItem("user") || "null");
+  const isTeacher = currentUser?.role === "teacher";
+  const isStudent = currentUser?.role === "student";
+  const canManage = !isStudent;
+
   const [exams, setExams] = useState([]);
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +56,10 @@ function Exam() {
   const [deletingId, setDeletingId] = useState(null);
 
   const [formData, setFormData] = useState(EMPTY_FORM);
+  const [errors, setErrors] = useState({});
+  const [modalError, setModalError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     fetchExams();
@@ -71,7 +82,28 @@ function Exam() {
 
   const fetchCourses = async () => {
     try {
-      const res = await api.get("/courses");
+      if (isStudent) {
+        // Students see the courses they're approved for, so the filter
+        // dropdown still works even before any exams are scheduled.
+        const res = await api.get(`/enrollments/student/${currentUser.student_id}`);
+        const seen = new Set();
+        const enrolledCourses = (res.data.data || [])
+          .filter((e) => e.status === "approved" && !seen.has(String(e.course_id)))
+          .map((e) => {
+            seen.add(String(e.course_id));
+            return {
+              course_id: e.course_id,
+              course_name: e.course_name,
+              course_code: e.course_code,
+            };
+          });
+        setCourses(enrolledCourses);
+        return;
+      }
+
+      const res = isTeacher
+        ? await api.get("/teacher-courses/my")
+        : await api.get("/courses");
       setCourses(res.data.data);
     } catch (err) {
       console.error(err);
@@ -92,6 +124,9 @@ function Exam() {
       course_id: selectedCourseId || "",
     });
     setEditingId(null);
+    setErrors({});
+    setModalError("");
+    setSaved(false);
     setShowModal(true);
   };
 
@@ -103,19 +138,24 @@ function Exam() {
       total_marks: exam.total_marks,
     });
     setEditingId(exam.exam_id);
+    setErrors({});
+    setModalError("");
+    setSaved(false);
     setShowModal(true);
   };
 
   const handleSave = async () => {
-    if (
-      !formData.course_id ||
-      !formData.exam_type ||
-      !formData.exam_date ||
-      !formData.total_marks
-    ) {
-      alert("All fields are required");
-      return;
-    }
+    const newErrors = {};
+    if (!formData.course_id) newErrors.course_id = "Select a course";
+    if (!formData.exam_type) newErrors.exam_type = "Select an exam type";
+    if (!formData.exam_date) newErrors.exam_date = "Date is required";
+    if (!formData.total_marks) newErrors.total_marks = "Total marks are required";
+    else if (Number(formData.total_marks) <= 0)
+      newErrors.total_marks = "Total marks must be greater than zero";
+
+    setErrors(newErrors);
+    setModalError("");
+    if (Object.keys(newErrors).length) return;
 
     try {
       if (editingId) {
@@ -124,14 +164,17 @@ function Exam() {
         await api.post("/exams", formData);
       }
 
-      setShowModal(false);
-      setEditingId(null);
-      setFormData(EMPTY_FORM);
-
-      fetchExams();
+      setSaved(true);
+      setTimeout(() => {
+        setShowModal(false);
+        setEditingId(null);
+        setFormData(EMPTY_FORM);
+        setSaved(false);
+        fetchExams();
+      }, 600);
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to save exam");
+      setModalError(err.response?.data?.message || "Failed to save exam");
     }
   };
 
@@ -139,10 +182,11 @@ function Exam() {
     try {
       await api.delete(`/exams/${deletingId}`);
       setDeletingId(null);
+      setDeleteError("");
       fetchExams();
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.message || "Failed to delete exam");
+      setDeleteError(err.response?.data?.message || "Failed to delete exam");
     }
   };
 
@@ -156,17 +200,33 @@ function Exam() {
     return exam.exam_type.toLowerCase().includes(term);
   });
 
-  const selectedCourse = courses.find(
+  const { sorted: sortedExams, sortKey, sortDir, toggle } = useSort(filteredExams, {
+    accessors: {
+      type: (exam) => String(exam.exam_type ?? ""),
+      date: (exam) => String(exam.exam_date ?? ""),
+      marks: (exam) => Number(exam.total_marks) || 0,
+    },
+  });
+
+  // Course filter dropdown: students use their approved enrolled courses
+  // (so it works even with zero exams); admin/teacher use the full list.
+  const courseOptions = courses;
+
+  const selectedCourse = courseOptions.find(
     (c) => String(c.course_id) === String(selectedCourseId)
   );
 
   return (
     <MainLayout>
       <PageHeader
-        title="Exams"
-        subtitle="Every assessment scheduled against a course, from quiz to final."
-        actionLabel="Add Exam"
-        onAction={openCreateModal}
+        title={isStudent ? "My Exams" : "Exams"}
+        subtitle={
+          isStudent
+            ? "Every assessment scheduled for the courses you're enrolled in."
+            : "Every assessment scheduled against a course, from quiz to final."
+        }
+        actionLabel={canManage ? "Add Exam" : undefined}
+        onAction={canManage ? openCreateModal : undefined}
       />
 
       <div className="surface">
@@ -179,7 +239,7 @@ function Exam() {
               className="control w-full sm:w-64"
             >
               <option value="">Select a course</option>
-              {courses.map((c) => (
+              {courseOptions.map((c) => (
                 <option key={c.course_id} value={c.course_id}>
                   {c.course_name} ({c.course_code})
                 </option>
@@ -205,8 +265,13 @@ function Exam() {
           </div>
 
           {selectedCourseId && (
-            <p className="label-mono">
-              {filteredExams.length} of {courseExams.length} records
+            <p className="label-mono shrink-0">
+              <span className="font-mono text-ink">
+                {filteredExams.length}
+              </span>
+              <span className="text-ink-mute">
+                {" "}of {courseExams.length} records
+              </span>
             </p>
           )}
         </div>
@@ -234,25 +299,48 @@ function Exam() {
               }
               hint={
                 courseExams.length === 0
-                  ? "Add the first exam for this course to get started"
+                  ? isStudent
+                    ? "No exams scheduled for this course yet"
+                    : "Add the first exam for this course to get started"
                   : "Try a different exam type"
               }
             />
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
+          <div className="table-scroll">
+            <table className="data-table w-full">
               <thead>
                 <tr className="bg-paper border-b border-line">
-                  <th className={TH}>Type</th>
-                  <th className={TH}>Date</th>
-                  <th className={`${TH} text-right`}>Total Marks</th>
-                  <th className={`${TH} text-center`}>Action</th>
+                  <SortableTh
+                    label="Type"
+                    sortKey="type"
+                    activeKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggle}
+                    className={TH}
+                  />
+                  <SortableTh
+                    label="Date"
+                    sortKey="date"
+                    activeKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggle}
+                    className={TH}
+                  />
+                  <SortableTh
+                    label="Total Marks"
+                    sortKey="marks"
+                    activeKey={sortKey}
+                    sortDir={sortDir}
+                    onSort={toggle}
+                    className={`${TH} text-right`}
+                  />
+                  {canManage && <th className={`${TH} text-center`}>Action</th>}
                 </tr>
               </thead>
 
               <tbody>
-                {filteredExams.map((exam) => (
+                {sortedExams.map((exam) => (
                   <tr
                     key={exam.exam_id}
                     className="border-b border-line last:border-b-0 hover:bg-paper transition-colors"
@@ -275,12 +363,14 @@ function Exam() {
                       {Number(exam.total_marks).toFixed(0)}
                     </td>
 
-                    <td className="px-5 py-3.5">
-                      <RowActions
-                        onEdit={() => openEditModal(exam)}
-                        onDelete={() => setDeletingId(exam.exam_id)}
-                      />
-                    </td>
+                    {canManage && (
+                      <td className="px-5 py-3.5">
+                        <RowActions
+                          onEdit={() => openEditModal(exam)}
+                          onDelete={() => setDeletingId(exam.exam_id)}
+                        />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -289,14 +379,17 @@ function Exam() {
         )}
       </div>
 
-      {showModal && (
+      {canManage && showModal && (
         <Modal
           title={editingId ? "Edit Exam" : "Add Exam"}
           onClose={() => setShowModal(false)}
           onSave={handleSave}
           saveLabel={editingId ? "Update" : "Save"}
+          saved={saved}
+          modalError={modalError}
+          saveHint="COURSE + TYPE + DATE + MARKS required"
         >
-          <Field label="Course">
+          <Field label="Course" error={errors.course_id}>
             <select
               name="course_id"
               value={formData.course_id}
@@ -312,7 +405,7 @@ function Exam() {
             </select>
           </Field>
 
-          <Field label="Exam Type">
+          <Field label="Exam Type" error={errors.exam_type}>
             <select
               name="exam_type"
               value={formData.exam_type}
@@ -328,7 +421,7 @@ function Exam() {
           </Field>
 
           <div className="grid grid-cols-2 gap-x-4">
-            <Field label="Date">
+            <Field label="Date" error={errors.exam_date}>
               <input
                 type="date"
                 name="exam_date"
@@ -338,7 +431,7 @@ function Exam() {
               />
             </Field>
 
-            <Field label="Total Marks">
+            <Field label="Total Marks" error={errors.total_marks}>
               <input
                 type="number"
                 step="0.01"
@@ -359,11 +452,15 @@ function Exam() {
         </Modal>
       )}
 
-      {deletingId && (
+      {canManage && deletingId && (
         <ConfirmDialog
           title="Delete Exam"
           message="Are you sure you want to delete this exam? All results recorded against it will be deleted too."
-          onCancel={() => setDeletingId(null)}
+          error={deleteError}
+          onCancel={() => {
+            setDeletingId(null);
+            setDeleteError("");
+          }}
           onConfirm={handleDelete}
         />
       )}
